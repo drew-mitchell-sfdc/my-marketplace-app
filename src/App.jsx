@@ -977,7 +977,7 @@ export default function App() {
           
           {hasBlockingError ? (
             <div className="space-y-3">
-               <button onClick={() => { setScenario('success'); setView('crm_quote'); }} className="w-full py-3 bg-blue-600 text-white rounded-md font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm">Return to Quote Configuration</button>
+               <button onClick={() => { setView('crm_quote'); }} className="w-full py-3 bg-blue-600 text-white rounded-md font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm">Return to Quote Configuration</button>
                <button onClick={() => setView('case_intake')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Log a Marketplace Operations Case</button>
                <button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button>
             </div>
