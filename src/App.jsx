@@ -4,7 +4,8 @@ import {
   CheckCircle2, FileText, Upload, Loader2, ShieldCheck, AlertCircle, 
   Clock, Send, Download, FileDown, Settings, RefreshCcw, LifeBuoy, 
   Server, ClipboardCheck, AlertTriangle, Info, ChevronDown, Menu,
-  Search, CheckCircle, Briefcase, Edit2, HelpCircle, Printer, Minus, RotateCw, MoreVertical
+  Search, CheckCircle, Briefcase, Edit2, HelpCircle, Printer, Minus, RotateCw, MoreVertical,
+  Mountain, Ticket, ChevronUp
 } from 'lucide-react';
 
 // --- SHARED COMPONENTS FOR CASE INTAKE ---
@@ -483,6 +484,7 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [quoteStatus, setQuoteStatus] = useState('Approved'); // CRM quote status
   const [hasCreatedOffer, setHasCreatedOffer] = useState(false); // Indicates if the Private Offer tracking sequence has completed
+  const [unpublishScenario, setUnpublishScenario] = useState('valid'); // valid, invalid_start
 
   // Bypass States
   const [marketplaceValidationsBypass, setMarketplaceValidationsBypass] = useState(false);
@@ -493,10 +495,10 @@ export default function App() {
   // Docusign State
   const [docusignForm, setDocusignForm] = useState({
     from: 'Drew Mitchell',
-    signer1: 'Sally Sales (sallysales@salesforce.com)',
+    signer1: 'Sally Sales (sallysales@sales.com)',
     cc: '',
     inPerson: false,
-    subject: `Q-11128001 from salesforce.com`,
+    subject: `Q-11128001`,
     message: `To begin the process of reviewing and signing your documents via DocuSign, please click on the 'Sign Now' link below. Signing will not be complete until you have reviewed the agreement and have confirmed your signature.\n\nThis signature is not binding. A Private Offer must still be accepted in the AWS Marketplace.\n\nPlease let me know if you have any questions.\n\nThank you,\nDrew Mitchell`
   });
 
@@ -517,10 +519,17 @@ export default function App() {
   expDateObj.setDate(expDateObj.getDate() + 5);
   const expirationDate = expDateObj.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
+  const dsExpObj = new Date();
+  dsExpObj.setDate(dsExpObj.getDate() + 4);
+  const yyyy = dsExpObj.getFullYear();
+  const mm = String(dsExpObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(dsExpObj.getDate()).padStart(2, '0');
+  const dsExpFormatted = `${yyyy}-${mm}-${dd}`;
+
   // Data State
-  const [awsAccountNumber, setAwsAccountNumber] = useState('485860572709');
+  const [awsAccountNumber, setAwsAccountNumber] = useState('123412341234');
   const [buyers, setBuyers] = useState([
-    { id: Date.now(), name: 'Drew Mitchell', email: 'drew.mitchell@salesforce.com' }
+    { id: Date.now(), name: 'Drew Mitchell', email: 'drew.mitchell@sales.com' }
   ]);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isDocusignValidated, setIsDocusignValidated] = useState(false);
@@ -536,7 +545,7 @@ export default function App() {
     if (deliveryMethod === 'none') {
       return "Generates a countersigned version of the Order Form and uploads directly to the AWS Marketplace for customer to accept the Private Offer. This is the quickest way to book your deal.";
     } else if (deliveryMethod === 'pdf') {
-      return "Generates a PDF of the Order Form for printing or emailing for the customer to physically sign and return to Salesforce. The signed document can be uploaded to the Private Offer.";
+      return "Generates a PDF of the Order Form for printing or emailing for the customer to physically sign and return to the Account Executive. The signed document can be uploaded to the Private Offer.";
     }
     return "";
   };
@@ -674,19 +683,137 @@ export default function App() {
     return <CaseIntakeFlow onBack={() => setView('validation')} initialQuoteId={quoteId} />;
   }
 
+  // --- 0.5 SUPPORT ARTICLE FLOW ---
+  if (view === 'support_article') {
+    return (
+      <div className="min-h-screen bg-white font-sans text-gray-900 animate-in fade-in duration-300">
+        {/* Basecamp Header */}
+        <header className="border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+             <div className="flex items-center gap-2 text-[#003A70] font-bold text-lg cursor-pointer" onClick={() => setView('validation')}>
+                <Mountain className="w-8 h-8 text-blue-600 fill-current" />
+                Basecamp
+             </div>
+             <nav className="hidden md:flex gap-6 text-[15px] font-medium text-gray-800">
+                <span className="flex items-center gap-1 cursor-pointer hover:text-blue-600">Connect <ChevronDown size={14}/></span>
+                <span className="flex items-center gap-1 cursor-pointer hover:text-blue-600">Support <ChevronDown size={14}/></span>
+                <span className="flex items-center gap-1 cursor-pointer hover:text-blue-600">Grow <ChevronDown size={14}/></span>
+             </nav>
+          </div>
+          <div className="flex items-center gap-6">
+             <div className="relative hidden md:block">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 w-4 h-4" />
+                <input type="text" placeholder="Search for a person or ask a question" className="pl-10 pr-4 py-1.5 bg-blue-50/50 border border-blue-200 rounded-full text-sm w-80 focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800" />
+             </div>
+             <div className="flex gap-4 items-center">
+                <div className="w-6 h-6 bg-blue-900 rounded flex items-center justify-center text-white text-[10px] font-bold">★</div>
+                <div className="w-8 h-8 bg-gray-300 rounded-full overflow-hidden border border-gray-400 flex items-center justify-center"><User className="w-6 h-6 text-gray-500 mt-1" /></div>
+             </div>
+          </div>
+        </header>
+
+        {/* Article Content */}
+        <div className="max-w-5xl mx-auto px-6 py-10">
+           <h1 className="text-[32px] font-bold text-[#003A70] mb-4 leading-tight">Bookings Operations Case for AWS Marketplace<br/>Private Offers</h1>
+           <div className="flex items-center gap-4 mb-10">
+              <span className="text-sm text-gray-500">Updated Aug 29, 2025</span>
+              <span className="text-[11px] font-bold text-white bg-teal-600 px-3 py-0.5 rounded-full">Sales</span>
+           </div>
+
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 lg:gap-16">
+              {/* Left Column - Article Body */}
+              <div className="lg:col-span-2 text-[#003A70]">
+                 <h2 className="text-xl font-bold mb-4">Bookings Operations Case for AWS Marketplace<br/>Private Offers</h2>
+                 
+                 <div className="border-t border-gray-200 py-4 mb-8">
+                    <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold text-[17px]">Article Summary</h3>
+                       <ChevronUp className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <p className="text-[15px] leading-relaxed text-gray-700">
+                       This article explains how to log a Booking Operations Case Record for two specific purposes: to request the creation of an AWS Marketplace Private Offer for an approved quote or to submit a general inquiry about a deal. It details the required subject lines for each request and outlines the certification process for submitting a Private Offer case.
+                    </p>
+                 </div>
+
+                 <div className="space-y-6 text-[15px] leading-relaxed text-gray-800 border-t border-gray-200 pt-8">
+                    <h3 className="text-lg font-bold text-[#003A70]">Case Reason Guidance for AWS Marketplace Requests</h3>
+                    <p>
+                       You can use the same Booking Operations Case Record to log two different types of requests related to AWS Marketplace deals. <strong>The key is to select the correct subject line for your case to ensure it is routed properly.</strong>
+                    </p>
+                    <p>
+                       <strong>To create an AWS Marketplace Private Offer</strong>: Once your quote has been approved and is ready to be sent to the customer, you must select the subject line option labeled "Create Private Offer." Before submitting this case, you are required to certify that you have reviewed both the "Managing Private Offers in Org62" and "FAQ guides" to ensure compliance.
+                    </p>
+                    <p>
+                       <strong>For general deal inquiries</strong>: If you have general questions or require support for a Marketplace deal, select the subject line option "Deal Inquiry."
+                    </p>
+
+                    <h3 className="text-lg font-bold text-[#003A70] pt-4">Examples of Deal Inquiries</h3>
+                    <p>
+                       The "Deal Inquiry" subject line is appropriate for a variety of requests, including but not limited to:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                       <li>Assistance understanding a payment schedule.</li>
+                       <li>Questions about invoicing.</li>
+                       <li>Requesting a SELA review.</li>
+                       <li>Submitting a swap or transfer request.</li>
+                       <li>Requesting signatures on documents.</li>
+                       <li>Seeking a review of SKUs.</li>
+                    </ul>
+
+                    <h3 className="text-lg font-bold text-[#003A70] pt-4">Required Certifications for Private Offer Requests</h3>
+                    <p>
+                       When you log a case with the subject line "Create Private Offer," you must read and certify your understanding of two essential documents prior to submission. Access the documents via the links below:
+                    </p>
+                    <div className="space-y-4 pt-2">
+                       <div><a href="#" className="text-blue-600 underline hover:text-blue-800">Managing AWS Marketplace Private Offers in Org62</a></div>
+                       <div><a href="#" className="text-blue-600 underline hover:text-blue-800">AWS Marketplace Private Offers FAQ</a></div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Right Column - Support Options Widget */}
+              <div className="lg:col-span-1">
+                 <div className="bg-white rounded-xl shadow-[0_2px_15px_rgba(0,0,0,0.08)] p-6 border border-gray-100 sticky top-6">
+                    <h3 className="font-bold text-[#003A70] text-sm mb-4">Support Options</h3>
+                    <button onClick={() => setView('case_intake')} className="w-full bg-[#006dcc] text-white py-2.5 rounded shadow-sm flex justify-center items-center gap-2 font-medium hover:bg-[#005a91] transition-colors">
+                       <Ticket size={18}/> Log a Ticket
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
   // --- 1. UNPUBLISH FLOW ---
   if (view === 'unpublish') {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-300">
-        <div className="max-w-5xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm overflow-hidden">
+        <div className="max-w-5xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm relative">
            
            {/* Header */}
            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-[#f3f3f3]">
              <h1 className="text-gray-800 text-sm">Unpublish Quote or Create Private Offer : <span className="text-[#006dcc]">{quoteId}</span></h1>
-             <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="text-[#006dcc] hover:underline text-sm">Back to Quote : {quoteId}</button>
+             <div className="flex items-center gap-4">
+               <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="text-[#006dcc] hover:underline text-sm">Back to Quote : {quoteId}</button>
+               <div className="relative group">
+                 <button className="p-1 text-gray-400 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button>
+                 <div className="absolute right-0 top-6 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 w-64">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Start Date Scenarios</p>
+                    <button onClick={() => setUnpublishScenario('valid')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${unpublishScenario === 'valid' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'>'} Today + 1 / Existing Private Offer</button>
+                    <button onClick={() => setUnpublishScenario('invalid_start')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${unpublishScenario === 'invalid_start' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'<'} Today + 1 / New Private Offer</button>
+                 </div>
+               </div>
+             </div>
            </div>
            
            <div className="p-8">
+             {unpublishScenario === 'invalid_start' && !hasCreatedOffer && (
+               <p className="text-red-600 font-bold text-[15px] mb-4">
+                 New Private Offers must be accepted at least 1 day prior to the start date. Please unpublish and update the start date to proceed.
+               </p>
+             )}
              <p className="text-gray-800 text-[15px] mb-8">
                {hasCreatedOffer
                  ? `Are you sure you want to unpublish ${quoteId} and cancel the Private Offer?`
@@ -717,7 +844,11 @@ export default function App() {
                    Click to validate Docusign envelope to proceed with Private Offer creation.
                  </p>
                  <div className="flex gap-3">
-                   <button onClick={() => setIsDocusignValidated(true)} className="px-4 py-1.5 border border-[#006dcc] text-[#006dcc] rounded text-[13px] hover:bg-blue-50 transition-colors bg-white">
+                   <button 
+                     disabled={unpublishScenario === 'invalid_start'}
+                     onClick={() => setIsDocusignValidated(true)} 
+                     className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}
+                   >
                      Validate Docusign Envelope
                    </button>
                    <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">
@@ -733,7 +864,11 @@ export default function App() {
                    Once signed documents have been received, click here to upload and proceed with Private Offer creation.
                  </p>
                  <div className="flex gap-3">
-                   <button onClick={() => fileInputRef.current.click()} className="px-4 py-1.5 border border-[#006dcc] text-[#006dcc] rounded text-[13px] hover:bg-blue-50 transition-colors bg-white">
+                   <button 
+                     disabled={unpublishScenario === 'invalid_start'}
+                     onClick={() => fileInputRef.current.click()} 
+                     className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}
+                   >
                      Upload Signed PDF
                    </button>
                    <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">
@@ -849,7 +984,7 @@ export default function App() {
                         >
                             Publish/Unpublish
                         </button>
-                        {["Configure", "Legal View", "Quote to Oppty Sync", "Toggle SFDC Signature", "Clone", "Re-trigger Tax Estimation"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}
+                        {["Configure", "Legal View", "Quote to Oppty Sync", "Toggle Signature", "Clone", "Re-trigger Tax Estimation"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}
                     </div>
                 </div>
                 <div className="bg-white border border-gray-200 rounded shadow-sm p-6">
@@ -934,8 +1069,7 @@ export default function App() {
           </div>
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-full mb-4"><span className="text-3xl">🦆</span></div>
-            <h1 className="text-xl font-bold text-gray-800">AWS Marketplace QUICK Checklist</h1>
-            <p className="text-sm text-gray-500 mt-1">Running automated quote checks...</p>
+            <h1 className="text-xl font-bold text-gray-800">Marketplace QUICK Validation</h1>
           </div>
           <div className="space-y-3 mb-10">
             {validationSteps.map((step) => (
@@ -978,7 +1112,7 @@ export default function App() {
           {hasBlockingError ? (
             <div className="space-y-3">
                <button onClick={() => { setView('crm_quote'); }} className="w-full py-3 bg-blue-600 text-white rounded-md font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm">Return to Quote Configuration</button>
-               <button onClick={() => setView('case_intake')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Log a Marketplace Operations Case</button>
+               <button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button>
                <button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button>
             </div>
           ) : hasWarning ? (
@@ -991,7 +1125,7 @@ export default function App() {
                >
                   {allValidationsCompleted ? 'Continue to Publish Options' : 'Validating...'}
                </button>
-               <button onClick={() => setView('case_intake')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Log a Marketplace Operations Case</button>
+               <button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button>
                <button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button>
             </div>
           ) : (
@@ -1070,7 +1204,7 @@ export default function App() {
                     <>
                       <div className="space-y-1.5">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer ID</p>
-                        <p className="text-sm font-bold p-2 bg-green-50 border border-green-200 text-green-800 rounded font-mono">Offer-abc123def1234</p>
+                        <p className="text-sm font-bold p-2 bg-green-50 border border-green-200 text-green-800 rounded font-mono">Offer-abc123def</p>
                       </div>
                       <div className="space-y-1.5">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer Expiration</p>
@@ -1079,8 +1213,8 @@ export default function App() {
                       <div className="space-y-1.5 md:col-span-2">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer URL</p>
                         <p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded truncate">
-                          <a href="https://aws.amazon.com/marketplace/procurement/?productId=prod-ohdccx5x3yp2e&offerId=offer-abc123def1234" target="_blank" rel="noreferrer" className="text-[#006dcc] hover:underline">
-                            https://aws.amazon.com/marketplace/procurement/?productId=prod-ohdccx5x3yp2e&offerId=offer-abc123def1234
+                          <a href="https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def" target="_blank" rel="noreferrer" className="text-[#006dcc] hover:underline">
+                            https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def
                           </a>
                         </p>
                       </div>
@@ -1274,7 +1408,7 @@ export default function App() {
                         <h2 className="text-xl tracking-widest mb-8 font-bold">ORDER FORM</h2>
                         <h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold">Address Information</h3>
                         <div className="flex justify-between text-[11px] mb-10 leading-relaxed">
-                            <div><p className="font-bold mb-1">Bill To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Company Name: Drew AWS UAT 10.1</p><p>Billing Contact Name: Drew Mitchell</p><p>Billing Email Address: drew.mitchell@salesforce.com</p></div>
+                            <div><p className="font-bold mb-1">Bill To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Company Name: Drew AWS UAT 10.1</p><p>Billing Contact Name: Drew Mitchell</p><p>Billing Email Address: drew.mitchell@sales.com</p></div>
                             <div><p className="font-bold mb-1">Ship To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Phone: (765) 432-9627</p><p>Billing Fax:</p><p>Billing Language: English</p></div>
                         </div>
                         <h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold mt-12">Terms and Conditions</h3>
@@ -1373,6 +1507,12 @@ export default function App() {
                               <input type="checkbox" checked={docusignForm.inPerson} onChange={(e) => setDocusignForm({...docusignForm, inPerson: e.target.checked})} className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
                               <span className="text-[13px] text-gray-700">In person signing?</span>
                             </label>
+                         </div>
+                       </div>
+                       <div className="flex items-center mt-4">
+                         <label className="w-1/4 text-[13px] text-gray-700 font-medium">Docusign Expiration Date:</label>
+                         <div className="w-3/4">
+                            <input type="date" value={dsExpFormatted} disabled className="w-full p-2 border border-gray-200 rounded text-[13px] bg-gray-50 text-gray-500 cursor-not-allowed focus:outline-none" />
                          </div>
                        </div>
                     </div>
