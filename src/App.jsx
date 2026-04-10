@@ -5,7 +5,7 @@ import {
   Clock, Send, Download, FileDown, Settings, RefreshCcw, LifeBuoy, 
   Server, ClipboardCheck, AlertTriangle, Info, ChevronDown, Menu,
   Search, CheckCircle, Briefcase, Edit2, HelpCircle, Printer, Minus, RotateCw, MoreVertical,
-  Mountain, Ticket, ChevronUp
+  Mountain, Ticket, ChevronUp, Calendar
 } from 'lucide-react';
 
 // --- SHARED COMPONENTS FOR CASE INTAKE ---
@@ -468,29 +468,72 @@ I confirm I have read the ${vendor} FAQ and will adhere to all Program restricti
  * MAIN APP ENTRY POINT
  */
 export default function App() {
+  // Helper to format Date objects to YYYY-MM-DD for input fields
+  const formatDateForInput = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Helper to parse YYYY-MM-DD as local date to avoid UTC shifts
+  const parseLocalInputDate = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  // Default Start Date: Today + 2 days
+  const todayRaw = new Date();
+  const defaultStartDateRaw = new Date();
+  defaultStartDateRaw.setDate(todayRaw.getDate() + 2);
+  const defaultStartDate = formatDateForInput(defaultStartDateRaw);
+
+  // Tomorrow Str for Unpublish default comparison
+  const tomorrowRaw = new Date();
+  tomorrowRaw.setDate(todayRaw.getDate() + 1);
+  const tomorrowStr = formatDateForInput(tomorrowRaw);
+
   // Navigation View State
   const [view, setView] = useState('crm_quote'); 
   
   // Demo Scenario States
-  const [scenario, setScenario] = useState('success'); // Validation: success, fail, hyperforce, custom_qst
-  const [trackingScenario, setTrackingScenario] = useState('standard'); // Tracking: standard, review
-  const [docusignScenario, setDocusignScenario] = useState('awaiting'); // DocuSign: awaiting, received
+  const [scenario, setScenario] = useState('success'); 
+  const [trackingScenario, setTrackingScenario] = useState('standard'); 
+  const [docusignScenario, setDocusignScenario] = useState('awaiting'); 
   
   // UI Interaction States
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [offerStatus, setOfferStatus] = useState('uploading'); // uploading, created, draft
+  const [offerStatus, setOfferStatus] = useState('uploading'); 
   const [deliveryMethod, setDeliveryMethod] = useState('none'); 
   const [signatureBlocks, setSignatureBlocks] = useState(1);
   const [statusMessage, setStatusMessage] = useState(null);
-  const [quoteStatus, setQuoteStatus] = useState('Approved'); // CRM quote status
-  const [hasCreatedOffer, setHasCreatedOffer] = useState(false); // Indicates if the Private Offer tracking sequence has completed
-  const [unpublishScenario, setUnpublishScenario] = useState('valid'); // valid, invalid_start
+  const [quoteStatus, setQuoteStatus] = useState('Approved'); 
+  const [hasCreatedOffer, setHasCreatedOffer] = useState(false); 
+  const [unpublishScenario, setUnpublishScenario] = useState('valid'); 
+  const [quoteType, setQuoteType] = useState('New Business Quote'); 
+  const [startDate, setStartDate] = useState(defaultStartDate); 
 
   // Bypass States
   const [marketplaceValidationsBypass, setMarketplaceValidationsBypass] = useState(false);
   const [marketplaceValidationsBypassReason, setMarketplaceValidationsBypassReason] = useState('');
-  const [marketplaceCustomTermBypass, setMarketplaceCustomTermBypass] = useState(false);
-  const [marketplaceCustomTermBypassReason, setMarketplaceCustomTermBypassReason] = useState('');
+
+  // Handle Unpublish Screen Scenario Defaulting Logic
+  useEffect(() => {
+    if (view === 'unpublish') {
+      const restrictedTypes = ['New Business Quote', 'Upgrade Quote', 'Renewal Quote'];
+      if (restrictedTypes.includes(quoteType)) {
+         // restrictedTypes: defaults based on date comparison
+         if (startDate <= tomorrowStr) {
+            setUnpublishScenario('invalid_start');
+         } else {
+            setUnpublishScenario('valid');
+         }
+      } else {
+         // Add On, Swap, Transfer: always default to valid
+         setUnpublishScenario('valid');
+      }
+    }
+  }, [view, quoteType, startDate, tomorrowStr]);
 
   // Docusign State
   const [docusignForm, setDocusignForm] = useState({
@@ -511,20 +554,21 @@ export default function App() {
 
   const [validationSteps, setValidationSteps] = useState(initialSteps);
 
-  // Constants
+  // Constants for UI display
   const quoteId = "Q-11128001";
-  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  const todayFormatted = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   
   const expDateObj = new Date();
   expDateObj.setDate(expDateObj.getDate() + 5);
   const expirationDate = expDateObj.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
-  const dsExpObj = new Date();
-  dsExpObj.setDate(dsExpObj.getDate() + 4);
-  const yyyy = dsExpObj.getFullYear();
-  const mm = String(dsExpObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(dsExpObj.getDate()).padStart(2, '0');
-  const dsExpFormatted = `${yyyy}-${mm}-${dd}`;
+  // Dynamically calculate DocuSign Expiration: 1 day prior to selected Start Date
+  const getDocusignExpiration = () => {
+    const sDate = parseLocalInputDate(startDate);
+    sDate.setDate(sDate.getDate() - 1);
+    return formatDateForInput(sDate);
+  };
+  const dsExpFormatted = getDocusignExpiration();
 
   // Data State
   const [awsAccountNumber, setAwsAccountNumber] = useState('123412341234');
@@ -563,7 +607,26 @@ export default function App() {
           
           let isBypassed = false;
 
-          // Logic for Eligibility failures (Step 3)
+          // --- Step 2 (Index 1): Validating Quote Configuration ---
+          if (i === 1) {
+            const todayStr = formatDateForInput(new Date());
+            const restrictedTypes = ['New Business Quote', 'Upgrade Quote', 'Renewal Quote'];
+            
+            if (restrictedTypes.includes(quoteType) && startDate <= todayStr) {
+                // Check if bypass is active
+                if (!marketplaceValidationsBypass) {
+                    setValidationSteps(prev => prev.map((step, idx) => {
+                      if (idx === i) return { ...step, status: 'error', error: 'Private Offers expire 1 day prior to the Start Date. Please update the Start Date to proceed.' };
+                      return step;
+                    }));
+                    return; // Stop further validation steps on blocking error
+                } else {
+                    isBypassed = true;
+                }
+            }
+          }
+
+          // --- Step 3 (Index 2): Confirming Product & Hyperforce Eligibility ---
           if (i === 2) {
             if (scenario === 'fail') {
               if (!marketplaceValidationsBypass) {
@@ -588,17 +651,13 @@ export default function App() {
             }
           }
 
-          // Logic for Custom QST warning (Step 4)
+          // --- Step 4 (Index 3): Validating Order Form Terms ---
           if (i === 3 && scenario === 'custom_qst') {
-            if (!marketplaceCustomTermBypass) {
-              setValidationSteps(prev => prev.map((step, idx) => {
-                  if (idx === i) return { ...step, status: 'warning', error: 'Custom QST detected. Marketplace Ops review required.' };
-                  return step;
-              }));
-              return;
-            } else {
-              isBypassed = true;
-            }
+            setValidationSteps(prev => prev.map((step, idx) => {
+                if (idx === i) return { ...step, status: 'warning', error: 'Custom QST detected. Marketplace Ops review required.' };
+                return step;
+            }));
+            return;
           }
 
           setValidationSteps(prev => prev.map((step, idx) => {
@@ -611,7 +670,7 @@ export default function App() {
       runValidation();
       return () => { isCancelled = true; };
     }
-  }, [view, scenario, marketplaceValidationsBypass, marketplaceCustomTermBypass]);
+  }, [view, scenario, marketplaceValidationsBypass, startDate, quoteType]);
 
   const handleNext = () => {
     if (deliveryMethod === 'pdf') setView('pdf_workflow');
@@ -620,7 +679,7 @@ export default function App() {
 
   const handleAWSPrivateOffer = () => {
     setOfferStatus('uploading');
-    if ((scenario === 'custom_qst' && !marketplaceCustomTermBypass) || deliveryMethod === 'pdf') {
+    if (scenario === 'custom_qst' || deliveryMethod === 'pdf') {
       setTrackingScenario('review');
     } else {
       setTrackingScenario('standard');
@@ -651,32 +710,46 @@ export default function App() {
     }, 1500);
   };
 
-  // Reusable Form Component
-  const MarketplaceInfoForm = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
-      <div className="flex items-center gap-2 mb-6">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">AWS Marketplace Information</h3>
-        <div className="h-px flex-1 bg-gray-200"></div>
-      </div>
-      <div className="max-w-xs">
-        <label className="text-xs font-bold text-gray-500 uppercase block mb-1.5 tracking-wider">AWS Account Number</label>
-        <div className="relative">
-          <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" value={awsAccountNumber} onChange={(e) => setAwsAccountNumber(e.target.value)} className="w-full pl-10 pr-3 py-2 border rounded text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" />
+  const MarketplaceInfoForm = () => {
+    const isAccountEditable = ['New Business Quote', 'Upgrade Quote', 'Renewal Quote'].includes(quoteType);
+
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
+        <div className="flex items-center gap-2 mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">AWS Marketplace Information</h3>
+          <div className="h-px flex-1 bg-gray-200"></div>
+        </div>
+        <div className="max-w-xs">
+          <label className="text-xs font-bold text-gray-500 uppercase block mb-1.5 tracking-wider">AWS Account Number</label>
+          <div className="relative">
+            <Hash className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isAccountEditable ? 'text-gray-400' : 'text-gray-300'}`} />
+            <input 
+              type="text" 
+              value={awsAccountNumber} 
+              onChange={(e) => setAwsAccountNumber(e.target.value)} 
+              disabled={!isAccountEditable}
+              className={`w-full pl-10 pr-3 py-2 border rounded text-sm transition-all outline-none ${
+                isAccountEditable 
+                  ? "bg-white border-gray-300 focus:bg-white focus:ring-2 focus:ring-blue-500" 
+                  : "bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200 shadow-inner"
+              }`} 
+            />
+          </div>
+          {!isAccountEditable && <p className="text-[10px] text-gray-400 mt-1 italic font-medium">AWS Account Number cannot be changed on an existing AWS Marketplace Contract.</p>}
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between"><label className="text-xs font-bold text-gray-500 uppercase block tracking-wider">Buyer Information</label><button onClick={() => setBuyers([...buyers, {id: Date.now(), name: '', email: ''}])} className="text-xs flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-semibold"><Plus className="w-3 h-3" /> Add Buyer</button></div>
+          <div className="space-y-3">{buyers.map((b) => (
+              <div key={b.id} className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 border rounded-md relative group transition-all hover:border-gray-300">
+                <div className="flex-1 relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" value={b.name} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, name: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Name" /></div>
+                <div className="flex-1 relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="email" value={b.email} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, email: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Email" /></div>
+                {buyers.length > 1 && (<button onClick={() => setBuyers(buyers.filter(bu => bu.id !== b.id))} className="absolute -right-2 -top-2 bg-white border border-gray-200 shadow-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-600 hover:border-red-200"><X className="w-3 h-3" /></button>)}
+              </div>
+            ))}</div>
         </div>
       </div>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between"><label className="text-xs font-bold text-gray-500 uppercase block tracking-wider">Buyer Information</label><button onClick={() => setBuyers([...buyers, {id: Date.now(), name: '', email: ''}])} className="text-xs flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-semibold"><Plus className="w-3 h-3" /> Add Buyer</button></div>
-        <div className="space-y-3">{buyers.map((b) => (
-            <div key={b.id} className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 border rounded-md relative group transition-all hover:border-gray-300">
-              <div className="flex-1 relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" value={b.name} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, name: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Name" /></div>
-              <div className="flex-1 relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="email" value={b.email} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, email: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Email" /></div>
-              {buyers.length > 1 && (<button onClick={() => setBuyers(buyers.filter(bu => bu.id !== b.id))} className="absolute -right-2 -top-2 bg-white border border-gray-200 shadow-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-600 hover:border-red-200"><X className="w-3 h-3" /></button>)}
-            </div>
-          ))}</div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // --- 0. CASE INTAKE FLOW ---
   if (view === 'case_intake') {
@@ -687,7 +760,6 @@ export default function App() {
   if (view === 'support_article') {
     return (
       <div className="min-h-screen bg-white font-sans text-gray-900 animate-in fade-in duration-300">
-        {/* Basecamp Header */}
         <header className="border-b border-gray-200 px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-8">
              <div className="flex items-center gap-2 text-[#003A70] font-bold text-lg cursor-pointer" onClick={() => setView('validation')}>
@@ -711,75 +783,32 @@ export default function App() {
              </div>
           </div>
         </header>
-
-        {/* Article Content */}
         <div className="max-w-5xl mx-auto px-6 py-10">
            <h1 className="text-[32px] font-bold text-[#003A70] mb-4 leading-tight">Bookings Operations Case for AWS Marketplace<br/>Private Offers</h1>
            <div className="flex items-center gap-4 mb-10">
               <span className="text-sm text-gray-500">Updated Aug 29, 2025</span>
               <span className="text-[11px] font-bold text-white bg-teal-600 px-3 py-0.5 rounded-full">Sales</span>
            </div>
-
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 lg:gap-16">
-              {/* Left Column - Article Body */}
               <div className="lg:col-span-2 text-[#003A70]">
                  <h2 className="text-xl font-bold mb-4">Bookings Operations Case for AWS Marketplace<br/>Private Offers</h2>
-                 
                  <div className="border-t border-gray-200 py-4 mb-8">
-                    <div className="flex justify-between items-center mb-4">
-                       <h3 className="font-bold text-[17px]">Article Summary</h3>
-                       <ChevronUp className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <p className="text-[15px] leading-relaxed text-gray-700">
-                       This article explains how to log a Booking Operations Case Record for two specific purposes: to request the creation of an AWS Marketplace Private Offer for an approved quote or to submit a general inquiry about a deal. It details the required subject lines for each request and outlines the certification process for submitting a Private Offer case.
-                    </p>
+                    <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-[17px]">Article Summary</h3><ChevronUp className="w-5 h-5 text-blue-600" /></div>
+                    <p className="text-[15px] leading-relaxed text-gray-700">This article explains how to log a Booking Operations Case Record for two specific purposes: to request the creation of an AWS Marketplace Private Offer for an approved quote or to submit a general inquiry about a deal. It details the required subject lines for each request and outlines the certification process for submitting a Private Offer case.</p>
                  </div>
-
                  <div className="space-y-6 text-[15px] leading-relaxed text-gray-800 border-t border-gray-200 pt-8">
                     <h3 className="text-lg font-bold text-[#003A70]">Case Reason Guidance for AWS Marketplace Requests</h3>
-                    <p>
-                       You can use the same Booking Operations Case Record to log two different types of requests related to AWS Marketplace deals. <strong>The key is to select the correct subject line for your case to ensure it is routed properly.</strong>
-                    </p>
-                    <p>
-                       <strong>To create an AWS Marketplace Private Offer</strong>: Once your quote has been approved and is ready to be sent to the customer, you must select the subject line option labeled "Create Private Offer." Before submitting this case, you are required to certify that you have reviewed both the "Managing Private Offers in Org62" and "FAQ guides" to ensure compliance.
-                    </p>
-                    <p>
-                       <strong>For general deal inquiries</strong>: If you have general questions or require support for a Marketplace deal, select the subject line option "Deal Inquiry."
-                    </p>
-
+                    <p>You can use the same Booking Operations Case Record to log two different types of requests related to AWS Marketplace deals. <strong>The key is to select the correct subject line for your case to ensure it is routed properly.</strong></p>
+                    <p><strong>To create an AWS Marketplace Private Offer</strong>: Once your quote has been approved and is ready to be sent to the customer, you must select the subject line option labeled "Create Private Offer." Before submitting this case, you are required to certify that you have reviewed both the "Managing Private Offers in Org62" and "FAQ guides" to ensure compliance.</p>
+                    <p><strong>For general deal inquiries</strong>: If you have general questions or require support for a Marketplace deal, select the subject line option "Deal Inquiry."</p>
                     <h3 className="text-lg font-bold text-[#003A70] pt-4">Examples of Deal Inquiries</h3>
-                    <p>
-                       The "Deal Inquiry" subject line is appropriate for a variety of requests, including but not limited to:
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1">
-                       <li>Assistance understanding a payment schedule.</li>
-                       <li>Questions about invoicing.</li>
-                       <li>Requesting a SELA review.</li>
-                       <li>Submitting a swap or transfer request.</li>
-                       <li>Requesting signatures on documents.</li>
-                       <li>Seeking a review of SKUs.</li>
-                    </ul>
-
+                    <ul className="list-disc pl-5 space-y-1"><li>Assistance understanding a payment schedule.</li><li>Questions about invoicing.</li><li>Requesting a SELA review.</li><li>Submitting a swap or transfer request.</li><li>Requesting signatures on documents.</li><li>Seeking a review of SKUs.</li></ul>
                     <h3 className="text-lg font-bold text-[#003A70] pt-4">Required Certifications for Private Offer Requests</h3>
-                    <p>
-                       When you log a case with the subject line "Create Private Offer," you must read and certify your understanding of two essential documents prior to submission. Access the documents via the links below:
-                    </p>
-                    <div className="space-y-4 pt-2">
-                       <div><a href="#" className="text-blue-600 underline hover:text-blue-800">Managing AWS Marketplace Private Offers in Org62</a></div>
-                       <div><a href="#" className="text-blue-600 underline hover:text-blue-800">AWS Marketplace Private Offers FAQ</a></div>
-                    </div>
+                    <p>When you log a case with the subject line "Create Private Offer," you must read and certify your understanding of two essential documents prior to submission. Access the documents via the links below:</p>
+                    <div className="space-y-4 pt-2"><div><a href="#" className="text-blue-600 underline hover:text-blue-800">Managing AWS Marketplace Private Offers in Org62</a></div><div><a href="#" className="text-blue-600 underline hover:text-blue-800">AWS Marketplace Private Offers FAQ</a></div></div>
                  </div>
               </div>
-
-              {/* Right Column - Support Options Widget */}
-              <div className="lg:col-span-1">
-                 <div className="bg-white rounded-xl shadow-[0_2px_15px_rgba(0,0,0,0.08)] p-6 border border-gray-100 sticky top-6">
-                    <h3 className="font-bold text-[#003A70] text-sm mb-4">Support Options</h3>
-                    <button onClick={() => setView('case_intake')} className="w-full bg-[#006dcc] text-white py-2.5 rounded shadow-sm flex justify-center items-center gap-2 font-medium hover:bg-[#005a91] transition-colors">
-                       <Ticket size={18}/> Log a Ticket
-                    </button>
-                 </div>
-              </div>
+              <div className="lg:col-span-1"><div className="bg-white rounded-xl shadow-[0_2px_15px_rgba(0,0,0,0.08)] p-6 border border-gray-100 sticky top-6"><h3 className="font-bold text-[#003A70] text-sm mb-4">Support Options</h3><button onClick={() => setView('case_intake')} className="w-full bg-[#006dcc] text-white py-2.5 rounded shadow-sm flex justify-center items-center gap-2 font-medium hover:bg-[#005a91] transition-colors"><Ticket size={18}/> Log a Ticket</button></div></div>
            </div>
         </div>
       </div>
@@ -791,130 +820,19 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-300">
         <div className="max-w-5xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm relative">
-           
-           {/* Header */}
-           <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-[#f3f3f3]">
-             <h1 className="text-gray-800 text-sm">Unpublish Quote or Create Private Offer : <span className="text-[#006dcc]">{quoteId}</span></h1>
-             <div className="flex items-center gap-4">
-               <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="text-[#006dcc] hover:underline text-sm">Back to Quote : {quoteId}</button>
-               <div className="relative group">
-                 <button className="p-1 text-gray-400 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button>
-                 <div className="absolute right-0 top-6 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 w-64">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Start Date Scenarios</p>
-                    <button onClick={() => setUnpublishScenario('valid')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${unpublishScenario === 'valid' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'>'} Today + 1 / Existing Private Offer</button>
-                    <button onClick={() => setUnpublishScenario('invalid_start')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${unpublishScenario === 'invalid_start' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'<'} Today + 1 / New Private Offer</button>
-                 </div>
-               </div>
-             </div>
-           </div>
-           
+           <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-[#f3f3f3]"><h1 className="text-gray-800 text-sm">Unpublish Quote or Create Private Offer : <span className="text-[#006dcc]">{quoteId}</span></h1><div className="flex items-center gap-4"><button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="text-[#006dcc] hover:underline text-sm">Back to Quote : {quoteId}</button><div className="relative group"><button className="p-1 text-gray-400 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button><div className="absolute right-0 top-6 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 w-64"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Start Date Scenarios</p><button onClick={() => setUnpublishScenario('valid')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${unpublishScenario === 'valid' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'>'} Today + 1 / Existing Private Offer</button><button onClick={() => setUnpublishScenario('invalid_start')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${unpublishScenario === 'invalid_start' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Start Date {'<'} Today + 1 / New Private Offer</button></div></div></div></div>
            <div className="p-8">
-             {unpublishScenario === 'invalid_start' && !hasCreatedOffer && (
-               <p className="text-red-600 font-bold text-[15px] mb-4">
-                 New Private Offers must be accepted at least 1 day prior to the start date. Please unpublish and update the start date to proceed.
-               </p>
-             )}
-             <p className="text-gray-800 text-[15px] mb-8">
-               {hasCreatedOffer
-                 ? `Are you sure you want to unpublish ${quoteId} and cancel the Private Offer?`
-                 : `Are you sure you want to unpublish ${quoteId} from ${deliveryMethod === 'docusign' ? 'DocuSign' : 'Print'}?`
-               }
-             </p>
-             
-             <div className="flex justify-start gap-3">
-               <button onClick={() => {
-                 setQuoteStatus('Approved');
-                 setView('crm_quote');
-                 setUploadedFile(null);
-                 setIsDocusignValidated(false);
-                 setDeliveryMethod('none');
-                 setHasCreatedOffer(false);
-               }} className="px-4 py-1.5 border border-[#006dcc] text-[#006dcc] rounded text-[13px] hover:bg-blue-50 transition-colors bg-white">Unpublish</button>
-               
-               <button onClick={() => {
-                 setView('crm_quote');
-                 setUploadedFile(null);
-                 setIsDocusignValidated(false);
-               }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">Cancel</button>
-             </div>
-
-             {!hasCreatedOffer && deliveryMethod === 'docusign' && !isDocusignValidated && (
-               <div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in">
-                 <p className="text-gray-800 text-[15px] mb-8">
-                   Click to validate Docusign envelope to proceed with Private Offer creation.
-                 </p>
-                 <div className="flex gap-3">
-                   <button 
-                     disabled={unpublishScenario === 'invalid_start'}
-                     onClick={() => setIsDocusignValidated(true)} 
-                     className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}
-                   >
-                     Validate Docusign Envelope
-                   </button>
-                   <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">
-                     Cancel
-                   </button>
-                 </div>
-               </div>
-             )}
-
-             {!hasCreatedOffer && deliveryMethod !== 'docusign' && !uploadedFile && (
-               <div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in">
-                 <p className="text-gray-800 text-[15px] mb-8">
-                   Once signed documents have been received, click here to upload and proceed with Private Offer creation.
-                 </p>
-                 <div className="flex gap-3">
-                   <button 
-                     disabled={unpublishScenario === 'invalid_start'}
-                     onClick={() => fileInputRef.current.click()} 
-                     className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}
-                   >
-                     Upload Signed PDF
-                   </button>
-                   <button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">
-                     Cancel
-                   </button>
-                 </div>
-               </div>
-             )}
-
+             {unpublishScenario === 'invalid_start' && !hasCreatedOffer && (<p className="text-red-600 font-bold text-[15px] mb-4">New Private Offers must be accepted at least 1 day prior to the start date. Please unpublish and update the start date to proceed.</p>)}
+             <p className="text-gray-800 text-[15px] mb-8">{hasCreatedOffer ? `Are you sure you want to unpublish ${quoteId} and cancel the Private Offer?` : `Are you sure you want to unpublish ${quoteId} from ${deliveryMethod === 'docusign' ? 'DocuSign' : 'Print'}?`}</p>
+             <div className="flex justify-start gap-3"><button onClick={() => { setQuoteStatus('Approved'); setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); setDeliveryMethod('none'); setHasCreatedOffer(false); }} className="px-4 py-1.5 border border-[#006dcc] text-[#006dcc] rounded text-[13px] hover:bg-blue-50 transition-colors bg-white">Unpublish</button><button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">Cancel</button></div>
+             {!hasCreatedOffer && deliveryMethod === 'docusign' && !isDocusignValidated && (<div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in"><p className="text-gray-800 text-[15px] mb-8">Click to validate Docusign envelope to proceed with Private Offer creation.</p><div className="flex gap-3"><button disabled={unpublishScenario === 'invalid_start'} onClick={() => setIsDocusignValidated(true)} className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}>Validate Docusign Envelope</button><button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">Cancel</button></div></div>)}
+             {!hasCreatedOffer && deliveryMethod !== 'docusign' && !uploadedFile && (<div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in"><p className="text-gray-800 text-[15px] mb-8">Once signed documents have been received, click here to upload and proceed with Private Offer creation.</p><div className="flex gap-3"><button disabled={unpublishScenario === 'invalid_start'} onClick={() => fileInputRef.current.click()} className={`px-4 py-1.5 border rounded text-[13px] transition-colors bg-white ${unpublishScenario === 'invalid_start' ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-[#006dcc] text-[#006dcc] hover:bg-blue-50'}`}>Upload Signed PDF</button><button onClick={() => { setView('crm_quote'); setUploadedFile(null); setIsDocusignValidated(false); }} className="px-4 py-1.5 border border-gray-300 text-gray-700 rounded text-[13px] hover:bg-gray-50 transition-colors bg-white">Cancel</button></div></div>)}
              <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={(e) => { const f = e.target.files[0]; if(f) setUploadedFile(f); }} />
-
              {(uploadedFile || isDocusignValidated) && !hasCreatedOffer && (
                 <div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in">
-                  {uploadedFile && (
-                    <div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div>
-                          <div>
-                            <span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">{uploadedFile.name}</span>
-                            <span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span>
-                          </div>
-                        </div>
-                        <button onClick={() => setUploadedFile(null)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                    </div>
-                  )}
-
-                  {isDocusignValidated && (
-                    <div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><CheckCircle2 className="w-5 h-5" /></div>
-                          <div>
-                            <span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">DocuSign Envelope Validated</span>
-                            <span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span>
-                          </div>
-                        </div>
-                        <button onClick={() => setIsDocusignValidated(false)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                    </div>
-                  )}
-                  
-                  <MarketplaceInfoForm />
-                  
-                  <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
-                      <button onClick={handleAWSPrivateOffer} className="px-8 py-2.5 bg-blue-600 text-white rounded shadow-md text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
-                          <Cloud className="w-4 h-4" /> Create AWS Private Offer
-                      </button>
-                  </div>
+                  {uploadedFile && (<div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto"><div className="flex items-center gap-3"><div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div><div><span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">{uploadedFile.name}</span><span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span></div></div><button onClick={() => setUploadedFile(null)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button></div>)}
+                  {isDocusignValidated && (<div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto"><div className="flex items-center gap-3"><div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><CheckCircle2 className="w-5 h-5" /></div><div><span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">DocuSign Envelope Validated</span><span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span></div></div><button onClick={() => setIsDocusignValidated(false)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button></div>)}
+                  <MarketplaceInfoForm /><div className="mt-8 pt-6 border-t border-gray-100 flex justify-center"><button onClick={handleAWSPrivateOffer} className="px-8 py-2.5 bg-blue-600 text-white rounded shadow-md text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all"><Cloud className="w-4 h-4" /> Create AWS Private Offer</button></div>
                 </div>
              )}
            </div>
@@ -927,126 +845,16 @@ export default function App() {
   if (view === 'crm_quote') {
     return (
       <div className="min-h-screen bg-[#f3f3f3] font-sans text-gray-800 animate-in fade-in duration-300">
-        <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-            <div className="flex items-center gap-4">
-                <div className="bg-[#5ea4de] p-1.5 rounded"><FileText className="w-5 h-5 text-white" /></div>
-                <div><p className="text-[10px] text-gray-500 uppercase font-bold leading-tight">Quote (CPQ)</p><h1 className="text-xl font-bold leading-tight">{quoteId}</h1></div>
+        <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm"><div className="flex items-center gap-4"><div className="bg-[#5ea4de] p-1.5 rounded"><FileText className="w-5 h-5 text-white" /></div><div><p className="text-[10px] text-gray-500 uppercase font-bold leading-tight">Quote (CPQ)</p><h1 className="text-xl font-bold leading-tight">{quoteId}</h1></div></div><div className="flex items-center gap-2"><button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">+ Follow</button><button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">New Note</button><button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">Video</button><button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">New Travel Approval</button><button className="px-2 py-1.5 border border-gray-300 rounded hover:bg-gray-50"><ChevronDown className="w-4 h-4" /></button></div></header>
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex gap-12 text-sm"><div><p className="text-xs text-gray-500">Quote Status</p><p className="font-semibold">{quoteStatus}</p></div><div><p className="text-xs text-gray-500">Primary</p><CheckCircle2 className="w-4 h-4 text-green-600 mt-1" /></div><div><p className="text-xs text-gray-500">Total Quote Amount</p><p className="font-semibold">USD 2,100.00</p></div></div>
+        
+        <div className="p-4 grid grid-cols-1 gap-4">
+            <div className="space-y-4 max-w-5xl">
+                <div className="flex border-b border-gray-200 gap-8 px-2"><button className="pb-2 text-sm font-bold border-b-2 border-transparent">Related</button><button className="pb-2 text-sm font-bold border-b-2 border-blue-600 text-blue-600">Details</button></div>
+                <div className="bg-white border border-gray-200 rounded shadow-sm p-6 mb-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl"><div><label className="text-[13px] font-bold text-gray-800 block mb-2">Quote Type</label><select value={quoteType} onChange={(e) => setQuoteType(e.target.value)} className="w-full border border-gray-300 rounded p-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"><option>New Business Quote</option><option>Add On Quote</option><option>Swap Quote</option><option>Upgrade Quote</option><option>Transfer Quote</option><option>Renewal Quote</option></select></div><div><label className="text-[13px] font-bold text-gray-800 block mb-2">Start Date</label><div className="relative"><Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" /><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full border border-gray-300 rounded p-2 pl-9 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" /></div></div></div></div>
+                <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden"><div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between cursor-pointer"><div className="flex items-center gap-2"><ChevronDown className="w-4 h-4 text-gray-500" /><span className="text-sm font-bold uppercase tracking-wider text-gray-600">Actions</span></div></div><div className="p-4 flex flex-wrap gap-2">{["Edit", "Sharing", "Submit/Review Approvals", "Approve/Reject"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}<button onClick={() => { if (quoteStatus === 'Published') setView('unpublish'); else { setQuoteStatus('Approved'); setView('validation'); } }} className="px-3 py-1 border border-blue-400 bg-blue-50 text-blue-700 rounded text-xs font-bold hover:bg-blue-100 transition-all shadow-sm ring-1 ring-blue-200">Publish/Unpublish</button>{["Configure", "Legal View", "Quote to Oppty Sync", "Toggle Signature", "Clone", "Re-trigger Tax Estimation"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}</div></div>
+                <div className="bg-white border border-gray-200 rounded shadow-sm p-6"><div className="grid grid-cols-2 gap-y-6 gap-x-8"><div className="border-b border-gray-200 pb-2 flex flex-col justify-between"><label className="text-[13px] font-bold text-gray-800 block mb-3">Marketplace Validations Bypass</label><input type="checkbox" checked={marketplaceValidationsBypass} onChange={(e) => setMarketplaceValidationsBypass(e.target.checked)} className="w-4 h-4 text-blue-600 rounded border-gray-300 cursor-pointer" /></div><div className="border-b border-gray-200 pb-2"><label className="text-[13px] font-bold text-gray-800 block mb-3">Reason for Bypass</label><input type="text" value={marketplaceValidationsBypassReason} onChange={(e) => setMarketplaceValidationsBypassReason(e.target.value)} disabled={!marketplaceValidationsBypass} className="w-full border-none bg-transparent focus:ring-0 text-[13px] text-gray-900 placeholder-gray-400 p-0 outline-none disabled:opacity-50" placeholder={marketplaceValidationsBypass ? "Enter reason..." : ""} /></div></div></div>
             </div>
-            <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">+ Follow</button>
-                <button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">New Note</button>
-                <button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">Video</button>
-                <button className="px-3 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50">New Travel Approval</button>
-                <button className="px-2 py-1.5 border border-gray-300 rounded hover:bg-gray-50"><ChevronDown className="w-4 h-4" /></button>
-            </div>
-        </header>
-
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex gap-12 text-sm">
-            <div><p className="text-xs text-gray-500">Quote Status</p><p className="font-semibold">{quoteStatus}</p></div>
-            <div><p className="text-xs text-gray-500">Primary</p><CheckCircle2 className="w-4 h-4 text-green-600 mt-1" /></div>
-            <div><p className="text-xs text-gray-500">Total Quote Amount</p><p className="font-semibold">USD 2,100.00</p></div>
-        </div>
-
-        <div className="px-4 py-3 bg-[#e8f0f8] border-b border-gray-200">
-            <div className="flex items-center gap-1 mb-2"><h3 className="text-sm font-bold">Related List Quick Links</h3><Info className="w-3.5 h-3.5 text-gray-400" /></div>
-            <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-[#0176d3] font-medium">
-                <span className="flex items-center gap-1 cursor-pointer hover:underline"><Plus className="w-3 h-3" /> Marketplace Offers (3)</span>
-                <span className="flex items-center gap-1 cursor-pointer hover:underline"><Plus className="w-3 h-3" /> Configuration Approval Requests (1)</span>
-                <span className="flex items-center gap-1 cursor-pointer hover:underline"><Plus className="w-3 h-3" /> Pricing Agreements (0)</span>
-                <span className="flex items-center gap-1 cursor-pointer hover:underline"><Plus className="w-3 h-3" /> Quotes Lines (1)</span>
-                <span className="flex items-center gap-1 cursor-pointer hover:underline"><Plus className="w-3 h-3" /> Special Terms (4)</span>
-                <span className="flex items-center gap-1 cursor-pointer hover:underline">Show All (22)</span>
-            </div>
-        </div>
-
-        <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 space-y-4">
-                <div className="flex border-b border-gray-200 gap-8 px-2">
-                    <button className="pb-2 text-sm font-bold border-b-2 border-transparent">Related</button>
-                    <button className="pb-2 text-sm font-bold border-b-2 border-blue-600 text-blue-600">Details</button>
-                </div>
-                <div className="bg-white border border-gray-200 rounded shadow-sm overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between cursor-pointer">
-                        <div className="flex items-center gap-2"><ChevronDown className="w-4 h-4 text-gray-500" /><span className="text-sm font-bold uppercase tracking-wider text-gray-600">Actions</span></div>
-                    </div>
-                    <div className="p-4 flex flex-wrap gap-2">
-                        {["Edit", "Sharing", "Submit/Review Approvals", "Approve/Reject"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}
-                        <button 
-                            onClick={() => { 
-                              if (quoteStatus === 'Published') {
-                                setView('unpublish');
-                              } else {
-                                setQuoteStatus('Approved'); 
-                                setView('validation'); 
-                              }
-                            }} 
-                            className="px-3 py-1 border border-blue-400 bg-blue-50 text-blue-700 rounded text-xs font-bold hover:bg-blue-100 transition-all shadow-sm ring-1 ring-blue-200"
-                        >
-                            Publish/Unpublish
-                        </button>
-                        {["Configure", "Legal View", "Quote to Oppty Sync", "Toggle Signature", "Clone", "Re-trigger Tax Estimation"].map(btn => (<button key={btn} className="px-3 py-1 border border-gray-300 rounded bg-white text-xs font-medium hover:bg-gray-50 transition-colors">{btn}</button>))}
-                    </div>
-                </div>
-                <div className="bg-white border border-gray-200 rounded shadow-sm p-6">
-                    <div className="grid grid-cols-2 gap-y-6 gap-x-8">
-                        <div className="border-b border-gray-200 pb-2 flex flex-col justify-between">
-                            <label className="text-[13px] font-bold text-gray-800 block mb-3">Marketplace Validations Bypass</label>
-                            <input 
-                                type="checkbox" 
-                                checked={marketplaceValidationsBypass} 
-                                onChange={(e) => setMarketplaceValidationsBypass(e.target.checked)} 
-                                className="w-4 h-4 text-blue-600 rounded border-gray-300 cursor-pointer"
-                            />
-                        </div>
-                        <div className="border-b border-gray-200 pb-2">
-                            <label className="text-[13px] font-bold text-gray-800 block mb-3">Reason for Bypass</label>
-                            <input 
-                                type="text" 
-                                value={marketplaceValidationsBypassReason}
-                                onChange={(e) => setMarketplaceValidationsBypassReason(e.target.value)}
-                                disabled={!marketplaceValidationsBypass}
-                                className="w-full border-none bg-transparent focus:ring-0 text-[13px] text-gray-900 placeholder-gray-400 p-0 outline-none disabled:opacity-50"
-                                placeholder={marketplaceValidationsBypass ? "Enter reason..." : ""}
-                            />
-                        </div>
-                        <div className="border-b border-gray-200 pb-2 flex flex-col justify-between">
-                            <label className="text-[13px] font-bold text-gray-800 block mb-3">Marketplace Custom Term Bypass</label>
-                            <input 
-                                type="checkbox" 
-                                checked={marketplaceCustomTermBypass} 
-                                onChange={(e) => setMarketplaceCustomTermBypass(e.target.checked)} 
-                                className="w-4 h-4 text-blue-600 rounded border-gray-300 cursor-pointer"
-                            />
-                        </div>
-                        <div className="border-b border-gray-200 pb-2">
-                            <label className="text-[13px] font-bold text-gray-800 block mb-3">Reason for Bypass</label>
-                            <input 
-                                type="text" 
-                                value={marketplaceCustomTermBypassReason}
-                                onChange={(e) => setMarketplaceCustomTermBypassReason(e.target.value)}
-                                disabled={!marketplaceCustomTermBypass}
-                                className="w-full border-none bg-transparent focus:ring-0 text-[13px] text-gray-900 placeholder-gray-400 p-0 outline-none disabled:opacity-50"
-                                placeholder={marketplaceCustomTermBypass ? "Enter reason..." : ""}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div className="space-y-4">
-                <div className="bg-white border border-gray-200 rounded shadow-sm p-4">
-                    <div className="flex items-center justify-between mb-4"><div className="flex items-center gap-2"><Server className="w-5 h-5 text-green-600" /><h4 className="font-bold text-sm">Address Validation Status</h4></div><span className="bg-green-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Validated</span></div>
-                </div>
-                <div className="bg-white border border-gray-200 rounded shadow-sm">
-                    <div className="flex border-b border-gray-200 text-xs font-bold"><button className="flex-1 py-3 text-blue-600 border-b-2 border-blue-600">Activity</button><button className="flex-1 py-3 text-gray-500 hover:text-gray-700">Chatter</button></div>
-                    <div className="p-4 space-y-4">
-                        <div className="flex items-center justify-between border border-gray-200 p-2 rounded"><span className="text-xs text-gray-500">Only show activities with insights</span><div className="w-8 h-4 bg-gray-200 rounded-full relative"><div className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div></div></div>
-                        <div className="text-center py-8 text-sm text-gray-400">No activities to show.</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div className="fixed bottom-4 left-4 z-50">
-            <button className="bg-[#0176d3] text-white flex items-center gap-2 px-4 py-2 rounded-full shadow-xl hover:bg-[#0165b5] transition-all"><Menu className="w-4 h-4" /><span className="font-bold text-sm">Sales Support</span><span className="text-lg">🐻</span></button>
         </div>
       </div>
     );
@@ -1057,87 +865,10 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex items-center justify-center font-sans text-gray-800 animate-in fade-in duration-300">
         <div className="max-w-md w-full bg-white border border-gray-300 rounded shadow-lg p-8 animate-in zoom-in duration-300 relative">
-          <div className="absolute top-4 right-4 group">
-            <button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button>
-            <div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[200px]">
-                <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Demo Scenarios</p>
-                <button onClick={() => setScenario('success')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'success' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>All Checks Passed</button>
-                <button onClick={() => setScenario('fail')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'fail' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Ineligible SKU Found</button>
-                <button onClick={() => setScenario('hyperforce')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'hyperforce' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Hyperforce Approval Needed</button>
-                <button onClick={() => setScenario('custom_qst')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${scenario === 'custom_qst' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-gray-50'}`}>Custom QST</button>
-            </div>
-          </div>
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-full mb-4"><span className="text-3xl">🦆</span></div>
-            <h1 className="text-xl font-bold text-gray-800">Marketplace QUICK Validation</h1>
-          </div>
-          <div className="space-y-3 mb-10">
-            {validationSteps.map((step) => (
-              <div key={step.id} className="space-y-2">
-                <div className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 ${
-                    step.status === 'error' ? 'border-red-200 bg-red-50' : 
-                    step.status === 'warning' ? 'border-amber-200 bg-amber-50' :
-                    (step.status === 'success' && step.isBypassed) ? 'border-blue-200 bg-blue-50/50' :
-                    step.status === 'success' ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100 bg-transparent'
-                }`}>
-                    <span className={`text-sm flex items-center ${
-                        (step.status === 'success' && step.isBypassed) ? 'text-blue-700 font-medium' :
-                        step.status === 'success' ? 'text-gray-700' : 
-                        step.status === 'error' ? 'text-red-700 font-medium' : 
-                        step.status === 'warning' ? 'text-amber-700 font-medium' : 'text-gray-400'
-                    }`}>
-                        {step.label}
-                        {step.isBypassed && <span className="ml-2 text-[10px] uppercase font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded tracking-wider">Bypassed</span>}
-                    </span>
-                    <div>
-                        {step.status === 'loading' && <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />}
-                        {step.status === 'success' && !step.isBypassed && <CheckCircle2 className="w-5 h-5 text-green-500 animate-in zoom-in" />}
-                        {step.status === 'success' && step.isBypassed && <ShieldCheck className="w-5 h-5 text-blue-500 animate-in zoom-in" />}
-                        {step.status === 'error' && <AlertCircle className="w-5 h-5 text-red-500 animate-bounce" />}
-                        {step.status === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500 animate-in zoom-in" />}
-                        {step.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-gray-200" />}
-                    </div>
-                </div>
-                {step.error && (step.status === 'error' || step.status === 'warning') && (
-                    <div className={`px-3 py-2 text-[11px] border-l-2 rounded-r animate-in slide-in-from-top-1 leading-relaxed ${
-                        step.status === 'error' ? 'text-red-600 bg-red-100/50 border-red-500' : 'text-amber-600 bg-amber-100/50 border-amber-500'
-                    }`}>
-                        {step.error}
-                    </div>
-                )}
-              </div>
-            ))}
-          </div>
-          
-          {hasBlockingError ? (
-            <div className="space-y-3">
-               <button onClick={() => { setView('crm_quote'); }} className="w-full py-3 bg-blue-600 text-white rounded-md font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm">Return to Quote Configuration</button>
-               <button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button>
-               <button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button>
-            </div>
-          ) : hasWarning ? (
-            <div className="space-y-3">
-               <button 
-                  disabled={!allValidationsCompleted && isValidating} 
-                  onClick={() => setView('publication')} 
-                  className={`w-full py-3 rounded-md font-semibold text-sm transition-all flex items-center justify-center gap-2 
-                  ${allValidationsCompleted && !isValidating ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-               >
-                  {allValidationsCompleted ? 'Continue to Publish Options' : 'Validating...'}
-               </button>
-               <button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button>
-               <button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button>
-            </div>
-          ) : (
-            <button 
-                disabled={!allValidationsCompleted && isValidating} 
-                onClick={() => setView('publication')} 
-                className={`w-full py-3 rounded-md font-semibold text-sm transition-all flex items-center justify-center gap-2 
-                ${allValidationsCompleted && !isValidating ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-            >
-                {allValidationsCompleted ? 'Continue to Publish Options' : 'Validating...'}
-            </button>
-          )}
+          <div className="absolute top-4 right-4 group"><button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button><div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[220px]"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Demo Scenarios</p><button onClick={() => setScenario('success')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'success' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>All Checks Passed</button><button onClick={() => setScenario('fail')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'fail' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Ineligible SKU Found</button><button onClick={() => setScenario('hyperforce')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${scenario === 'hyperforce' ? 'bg-red-50 text-red-600 font-bold' : 'hover:bg-gray-50'}`}>Hyperforce Approval Needed</button><button onClick={() => setScenario('custom_qst')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${scenario === 'custom_qst' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-gray-50'}`}>Custom QST</button></div></div>
+          <div className="text-center mb-8"><div className="inline-flex items-center justify-center w-16 h-16 bg-blue-50 rounded-full mb-4"><span className="text-3xl">🦆</span></div><h1 className="text-xl font-bold text-gray-800">Marketplace QUICK Validation</h1></div>
+          <div className="space-y-3 mb-10">{validationSteps.map((step) => (<div key={step.id} className="space-y-2"><div className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 ${step.status === 'error' ? 'border-red-200 bg-red-50' : step.status === 'warning' ? 'border-amber-200 bg-amber-50' : (step.status === 'success' && step.isBypassed) ? 'border-blue-200 bg-blue-50/50' : step.status === 'success' ? 'border-gray-100 bg-gray-50/50' : 'border-gray-100 bg-transparent'}`}><span className={`text-sm flex items-center ${ (step.status === 'success' && step.isBypassed) ? 'text-blue-700 font-medium' : step.status === 'success' ? 'text-gray-700' : step.status === 'error' ? 'text-red-700 font-medium' : step.status === 'warning' ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>{step.label}{step.isBypassed && <span className="ml-2 text-[10px] uppercase font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded tracking-wider">Bypassed</span>}</span><div>{step.status === 'loading' && <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />}{step.status === 'success' && !step.isBypassed && <CheckCircle2 className="w-5 h-5 text-green-500 animate-in zoom-in" />}{step.status === 'success' && step.isBypassed && <ShieldCheck className="w-5 h-5 text-blue-500 animate-in zoom-in" />}{step.status === 'error' && <AlertCircle className="w-5 h-5 text-red-500 animate-bounce" />}{step.status === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500 animate-in zoom-in" />}{step.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-gray-200" />}</div></div>{step.error && (step.status === 'error' || step.status === 'warning') && (<div className={`px-3 py-2 text-[11px] border-l-2 rounded-r animate-in slide-in-from-top-1 leading-relaxed ${step.status === 'error' ? 'text-red-600 bg-red-100/50 border-red-500' : 'text-amber-600 bg-amber-100/50 border-amber-500'}`}>{step.error}</div>)}</div>))}</div>
+          {hasBlockingError ? (<div className="space-y-3"><button onClick={() => { setView('crm_quote'); }} className="w-full py-3 bg-blue-600 text-white rounded-md font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm">Return to Quote Configuration</button><button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button><button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button></div>) : hasWarning ? (<div className="space-y-3"><button disabled={!allValidationsCompleted && isValidating} onClick={() => setView('publication')} className={`w-full py-3 rounded-md font-semibold text-sm transition-all flex items-center justify-center gap-2 ${allValidationsCompleted && !isValidating ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{allValidationsCompleted ? 'Continue to Publish Options' : 'Validating...'}</button><button onClick={() => setView('support_article')} className="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold text-sm hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"><LifeBuoy className="w-4 h-4" /> Marketplace Operations Support</button><button onClick={handleCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 underline text-center block">Exit to Quote</button></div>) : (<button disabled={!allValidationsCompleted && isValidating} onClick={() => setView('publication')} className={`w-full py-3 rounded-md font-semibold text-sm transition-all flex items-center justify-center gap-2 ${allValidationsCompleted && !isValidating ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{allValidationsCompleted ? 'Continue to Publish Options' : 'Validating...'}</button>)}
         </div>
       </div>
     );
@@ -1151,149 +882,15 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-500">
         <div className="max-w-4xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm overflow-hidden relative">
-          <div className="absolute top-4 right-4 group">
-            <button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button>
-            <div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[220px]">
-                <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Tracking Scenarios</p>
-                <button onClick={() => setTrackingScenario('standard')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${trackingScenario === 'standard' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Standard Private Offer</button>
-                <button onClick={() => setTrackingScenario('review')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${trackingScenario === 'review' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-gray-50'}`}>Marketplace Ops Review Required</button>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-            <h1 className="text-blue-700 font-normal">Private Offer Tracking : <span className="hover:underline cursor-pointer">{quoteId}</span></h1>
-            {!isComplete && <button onClick={() => setView('publication')} className="text-blue-600 hover:underline text-sm flex items-center gap-1"><ChevronLeft className="w-4 h-4" /> Back to Publication</button>}
-          </div>
-
+          <div className="absolute top-4 right-4 group"><button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button><div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[220px]"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">Tracking Scenarios</p><button onClick={() => setTrackingScenario('standard')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${trackingScenario === 'standard' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Standard Private Offer</button><button onClick={() => setTrackingScenario('review')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${trackingScenario === 'review' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-gray-50'}`}>Marketplace Ops Review Required</button></div></div>
+          <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50"><h1 className="text-blue-700 font-normal">Private Offer Tracking : <span className="hover:underline cursor-pointer">{quoteId}</span></h1>{!isComplete && <button onClick={() => setView('publication')} className="text-blue-600 hover:underline text-sm flex items-center gap-1"><ChevronLeft className="w-4 h-4" /> Back to Publication</button>}</div>
           <div className="p-8">
             <div className="max-w-3xl mx-auto">
-              
-              {/* Status Banner */}
-              <div className={`flex items-center gap-6 mb-8 p-6 border rounded-lg transition-all duration-500 ${isCreated ? 'bg-green-50 border-green-100' : isDraft ? 'bg-amber-50 border-amber-100' : 'bg-blue-50 border-blue-100'}`}>
-                <div className={`p-4 bg-white rounded-full shadow-sm transition-colors ${isCreated ? 'text-green-600' : isDraft ? 'text-amber-600' : 'text-blue-600 animate-pulse'}`}>
-                  {isCreated ? <CheckCircle2 className="w-8 h-8" /> : isDraft ? <AlertTriangle className="w-8 h-8" /> : <Cloud className="w-8 h-8" />}
-                </div>
-                <div>
-                  <h2 className={`text-lg font-bold ${isCreated ? 'text-green-900' : isDraft ? 'text-amber-900' : 'text-blue-900'}`}>
-                    {isCreated ? 'Private Offer Created Successfully' : isDraft ? 'Private Offer Ready for Review' : 'Private Offer Sent Successfully'}
-                  </h2>
-                  <p className={`text-sm mt-1 flex items-center gap-1.5 ${isCreated ? 'text-green-700' : isDraft ? 'text-amber-700' : 'text-blue-700'}`}>
-                    <Clock className="w-4 h-4" /> {isCreated ? `Active as of ${today}` : isDraft ? 'Awaiting Operations Review' : `Sent on ${today}`}
-                  </p>
-                </div>
-              </div>
-
-              {/* Data Grid */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Offer Details</h3>
-                  <div className="h-px flex-1 bg-gray-200"></div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Account</p>
-                    <p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded font-mono">{awsAccountNumber}</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Submission Date</p>
-                    <p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">{today}</p>
-                  </div>
-
-                  {isCreated && (
-                    <>
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer ID</p>
-                        <p className="text-sm font-bold p-2 bg-green-50 border border-green-200 text-green-800 rounded font-mono">Offer-abc123def</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer Expiration</p>
-                        <p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">{expirationDate}</p>
-                      </div>
-                      <div className="space-y-1.5 md:col-span-2">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer URL</p>
-                        <p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded truncate">
-                          <a href="https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def" target="_blank" rel="noreferrer" className="text-[#006dcc] hover:underline">
-                            https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def
-                          </a>
-                        </p>
-                      </div>
-                    </>
-                  )}
-
-                  {isDraft && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Case Reference</p>
-                      <p className="text-sm font-bold p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded">
-                         <a href="#" className="underline hover:text-amber-900" onClick={(e) => { e.preventDefault(); setView('case_intake'); }}>8028493</a>
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Buyer Info */}
-              {isCreated && (
-                <div className="space-y-6 mt-8 pt-8 border-t border-gray-100">
-                  <div className="flex items-center gap-2 mb-6">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Buyer Information</h3>
-                    <div className="h-px flex-1 bg-gray-200"></div>
-                  </div>
-                  <div className="space-y-3">
-                    {buyers.map(b => (
-                      <div key={b.id} className="flex flex-col sm:flex-row gap-4 p-3 bg-gray-50 border border-gray-200 rounded">
-                        <div className="flex-1 flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm font-medium text-gray-800">{b.name}</span>
-                        </div>
-                        <div className="flex-1 flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm text-gray-600">{b.email}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Processing States */}
-              {!isComplete ? (
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-md mt-8">
-                   <div className="flex items-center gap-3">
-                      <Loader2 className={`w-5 h-5 text-blue-500 ${!isRefreshing ? 'animate-spin' : ''}`} />
-                      <p className="text-sm font-bold text-blue-800 uppercase tracking-widest">
-                         Processing: Uploading to Marketplace...
-                      </p>
-                   </div>
-                   <div className="w-full bg-blue-200 rounded-full h-1.5 mt-3 overflow-hidden">
-                      <div className="bg-blue-600 h-1.5 rounded-full w-2/3 animate-pulse"></div>
-                   </div>
-                </div>
-              ) : isDraft ? (
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-md flex items-start gap-3 mt-8">
-                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                   <p className="text-sm text-amber-800 leading-relaxed">
-                      The Private Offer has been created and is in Draft status awaiting review. A Marketplace Operations Case (<a href="#" className="font-bold underline hover:text-amber-900" onClick={(e) => { e.preventDefault(); setView('case_intake'); }}>8028493</a>) has been created on your behalf. You will receive an update once the Private Offer has been sent or if there are issues.
-                   </p>
-                </div>
-              ) : null}
-
-              {/* Buttons */}
-              <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap justify-center gap-4">
-                <button onClick={handleRefreshStatus} disabled={isRefreshing || isComplete} className={`px-8 py-2.5 rounded shadow-sm text-sm font-bold flex items-center gap-2 border transition-all ${(isRefreshing || isComplete) ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}><RefreshCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />{isComplete ? 'Up to Date' : 'Refresh Status'}</button>
-                <button onClick={() => {
-                    if (isComplete) {
-                        setQuoteStatus('Published');
-                        setHasCreatedOffer(true);
-                        setView('crm_quote');
-                    } else {
-                        handleCancel();
-                    }
-                }} className={`px-8 py-2.5 rounded shadow-md text-sm font-bold transition-all flex items-center gap-2 ${isCreated ? 'bg-green-600 hover:bg-green-700' : isDraft ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
-                    {isComplete ? 'Finish & Return to Quote' : 'Finish & Exit'}
-                </button>
-              </div>
-
+              <div className={`flex items-center gap-6 mb-8 p-6 border rounded-lg transition-all duration-500 ${isCreated ? 'bg-green-50 border-green-100' : isDraft ? 'bg-amber-50 border-amber-100' : 'bg-blue-50 border-blue-100'}`}><div className={`p-4 bg-white rounded-full shadow-sm transition-colors ${isCreated ? 'text-green-600' : isDraft ? 'text-amber-600' : 'text-blue-600 animate-pulse'}`}>{isCreated ? <CheckCircle2 className="w-8 h-8" /> : isDraft ? <AlertTriangle className="w-8 h-8" /> : <Cloud className="w-8 h-8" />}</div><div><h2 className={`text-lg font-bold ${isCreated ? 'text-green-900' : isDraft ? 'text-amber-900' : 'text-blue-900'}`}>{isCreated ? 'Private Offer Created Successfully' : isDraft ? 'Private Offer Ready for Review' : 'Private Offer Sent Successfully'}</h2><p className={`text-sm mt-1 flex items-center gap-1.5 ${isCreated ? 'text-green-700' : isDraft ? 'text-amber-700' : 'text-blue-700'}`}><Clock className="w-4 h-4" /> {isCreated ? `Active as of ${todayFormatted}` : isDraft ? 'Awaiting Operations Review' : `Sent on ${todayFormatted}`}</p></div></div>
+              <div className="space-y-6"><div className="flex items-center gap-2 mb-6"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Offer Details</h3><div className="h-px flex-1 bg-gray-200"></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Target Account</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded font-mono">{awsAccountNumber}</p></div><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Submission Date</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">{todayFormatted}</p></div>{isCreated && (<><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer ID</p><p className="text-sm font-bold p-2 bg-green-50 border border-green-200 text-green-800 rounded font-mono">Offer-abc123def</p></div><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer Expiration</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">{expirationDate}</p></div><div className="space-y-1.5 md:col-span-2"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Offer URL</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded truncate"><a href="https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def" target="_blank" rel="noreferrer" className="text-[#006dcc] hover:underline">https://aws.amazon.com/marketplace/procurement/?productId=prod-abcd1234&offerId=offer-abc123def</a></p></div></>)}{isDraft && (<div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Case Reference</p><p className="text-sm font-bold p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded"><a href="#" className="underline hover:text-amber-900" onClick={(e) => { e.preventDefault(); setView('case_intake'); }}>8028493</a></p></div>)}</div></div>
+              {isCreated && (<div className="space-y-6 mt-8 pt-8 border-t border-gray-100"><div className="flex items-center gap-2 mb-6"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Buyer Information</h3><div className="h-px flex-1 bg-gray-200"></div></div><div className="space-y-3">{buyers.map(b => (<div key={b.id} className="flex flex-col sm:flex-row gap-4 p-3 bg-gray-50 border border-gray-200 rounded"><div className="flex-1 flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /><span className="text-sm font-medium text-gray-800">{b.name}</span></div><div className="flex-1 flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600">{b.email}</span></div></div>))}</div></div>)}
+              {!isComplete ? (<div className="bg-blue-50 border border-blue-200 p-4 rounded-md mt-8"><div className="flex items-center gap-3"><Loader2 className={`w-5 h-5 text-blue-500 animate-spin`} /><p className="text-sm font-bold text-blue-800 uppercase tracking-widest">Processing: Uploading to Marketplace...</p></div><div className="w-full bg-blue-200 rounded-full h-1.5 mt-3 overflow-hidden"><div className="bg-blue-600 h-1.5 rounded-full w-2/3 animate-pulse"></div></div></div>) : isDraft ? (<div className="bg-amber-50 border border-amber-200 p-4 rounded-md flex items-start gap-3 mt-8"><AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" /><p className="text-sm text-amber-800 leading-relaxed">The Private Offer has been created and is in Draft status awaiting review. A Marketplace Operations Case (<a href="#" className="font-bold underline hover:text-amber-900" onClick={(e) => { e.preventDefault(); setView('case_intake'); }}>8028493</a>) has been created on your behalf. You will receive an update once the Private Offer has been sent or if there are issues.</p></div>) : null}
+              <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap justify-center gap-4"><button onClick={handleRefreshStatus} disabled={isRefreshing || isComplete} className={`px-8 py-2.5 rounded shadow-sm text-sm font-bold flex items-center gap-2 border transition-all ${(isRefreshing || isComplete) ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}><RefreshCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />{isComplete ? 'Up to Date' : 'Refresh Status'}</button><button onClick={() => { if (isComplete) { setQuoteStatus('Published'); setHasCreatedOffer(true); setView('crm_quote'); } else { handleCancel(); } }} className={`px-8 py-2.5 rounded shadow-md text-sm font-bold transition-all flex items-center gap-2 ${isCreated ? 'bg-green-600 hover:bg-green-700' : isDraft ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>{isComplete ? 'Finish & Return to Quote' : 'Finish & Exit'}</button></div>
             </div>
           </div>
         </div>
@@ -1305,37 +902,15 @@ export default function App() {
   if (view === 'docusign_status') {
     const isReceived = docusignScenario === 'received';
     return (
-      <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-500">
+      <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-300">
         <div className="max-w-4xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm overflow-hidden relative">
-          <div className="absolute top-4 right-4 group">
-            <button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button>
-            <div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[220px]">
-                <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">DocuSign Scenarios</p>
-                <button onClick={() => setDocusignScenario('awaiting')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${docusignScenario === 'awaiting' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Awaiting External Signature</button>
-                <button onClick={() => setDocusignScenario('received')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${docusignScenario === 'received' ? 'bg-green-50 text-green-700 font-bold' : 'hover:bg-gray-50'}`}>External Signature Received</button>
-            </div>
-          </div>
-          <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-            <h1 className="text-blue-700 font-normal">DocuSign Tracking : <span className="hover:underline cursor-pointer">{quoteId}</span></h1>
-            <button onClick={() => setView('publication')} className="text-blue-600 hover:underline text-sm flex items-center gap-1"><ChevronLeft className="w-4 h-4" /> Edit Publication Settings</button>
-          </div>
+          <div className="absolute top-4 right-4 group"><button className="p-2 text-gray-300 hover:text-blue-500 transition-colors"><Settings className="w-4 h-4" /></button><div className="absolute right-0 top-8 bg-white border border-gray-200 shadow-xl rounded p-2 hidden group-hover:block z-50 min-w-[220px]"><p className="text-[10px] font-bold text-gray-400 uppercase mb-2 px-2">DocuSign Scenarios</p><button onClick={() => setDocusignScenario('awaiting')} className={`w-full text-left px-3 py-1.5 text-xs rounded mb-1 ${docusignScenario === 'awaiting' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>Awaiting External Signature</button><button onClick={() => setDocusignScenario('received')} className={`w-full text-left px-3 py-1.5 text-xs rounded ${docusignScenario === 'received' ? 'bg-green-50 text-green-700 font-bold' : 'hover:bg-gray-50'}`}>External Signature Received</button></div></div>
+          <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50"><h1 className="text-blue-700 font-normal">DocuSign Tracking : <span className="hover:underline cursor-pointer">{quoteId}</span></h1><button onClick={() => setView('publication')} className="text-blue-600 hover:underline text-sm flex items-center gap-1"><ChevronLeft className="w-4 h-4" /> Edit Publication Settings</button></div>
           <div className="p-8">
             <div className="max-w-2xl mx-auto">
-              <div className={`flex items-center gap-6 mb-8 p-6 border rounded-lg transition-all duration-500 ${isReceived ? 'bg-green-50 border-green-100' : 'bg-blue-50 border-blue-100'}`}>
-                <div className={`p-4 bg-white rounded-full shadow-sm transition-colors ${isReceived ? 'text-green-600' : 'text-blue-600 animate-pulse'}`}>{isReceived ? <CheckCircle2 className="w-8 h-8" /> : <Send className="w-8 h-8" />}</div>
-                <div><h2 className={`text-lg font-bold ${isReceived ? 'text-green-900' : 'text-blue-900'}`}>DocuSign Status: {isReceived ? 'Signed Envelope Received' : 'Sent for Signature'}</h2><p className={`text-sm mt-1 flex items-center gap-1.5 ${isReceived ? 'text-green-700' : 'text-blue-700'}`}><Clock className="w-4 h-4" /> {isReceived ? 'Received' : 'Sent'} on {today}</p></div>
-              </div>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Email</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">{docusignEmail}</p></div>
-                  <div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Workflow Step</p><p className={`text-sm font-bold p-2 border rounded transition-colors ${isReceived ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200'}`}>{isReceived ? 'External Signature Received' : 'Awaiting External Signature'}</p></div>
-                </div>
-                {!isReceived ? <div className="bg-amber-50 border border-amber-200 p-4 rounded-md animate-in fade-in duration-300"><div className="flex gap-3"><AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" /><p className="text-xs text-amber-800 leading-relaxed">The Create AWS Private Offer workflow is locked until the Order Form has been fully executed via DocuSign.</p></div></div> : <div className="mt-8 pt-8 border-t border-gray-100"><MarketplaceInfoForm /></div>}
-              </div>
-              <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap justify-center gap-4">
-                <button onClick={handleAWSPrivateOffer} disabled={!isReceived} className={`px-8 py-2.5 border rounded shadow-sm text-sm font-bold flex items-center gap-2 transition-all ${!isReceived ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'bg-white hover:bg-gray-50 border-gray-300 text-gray-700 cursor-pointer shadow-md'}`}><Cloud className={`w-4 h-4 ${!isReceived ? 'text-gray-400' : 'text-blue-500'}`} /> Create AWS Private Offer</button>
-                <button onClick={handleCancel} className="px-8 py-2.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors">Cancel</button>
-              </div>
+              <div className={`flex items-center gap-6 mb-8 p-6 border rounded-lg transition-all duration-500 ${isReceived ? 'bg-green-50 border-green-100' : 'bg-blue-50 border-blue-100'}`}><div className={`p-4 bg-white rounded-full shadow-sm transition-colors ${isReceived ? 'text-green-600' : 'text-blue-600 animate-pulse'}`}>{isReceived ? <CheckCircle2 className="w-8 h-8" /> : <Send className="w-8 h-8" />}</div><div><h2 className={`text-lg font-bold ${isReceived ? 'text-green-900' : 'text-blue-900'}`}>DocuSign Status: {isReceived ? 'Signed Envelope Received' : 'Sent for Signature'}</h2><p className={`text-sm mt-1 flex items-center gap-1.5 ${isReceived ? 'text-green-700' : 'text-blue-700'}`}><Clock className="w-4 h-4" /> {isReceived ? 'Received' : 'Sent'} on {todayFormatted}</p></div></div>
+              <div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Email</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">drew.mitchell@sales.com</p></div><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Workflow Step</p><p className={`text-sm font-bold p-2 border rounded transition-colors ${isReceived ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200'}`}>{isReceived ? 'External Signature Received' : 'Awaiting External Signature'}</p></div></div>{!isReceived ? (<div className="bg-amber-50 border border-amber-200 p-4 rounded-md animate-in fade-in duration-300"><div className="flex gap-3"><AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" /><p className="text-xs text-amber-800 leading-relaxed">The Create AWS Private Offer workflow is locked until the Order Form has been fully executed via DocuSign.</p></div></div>) : (<div className="mt-8 pt-8 border-t border-gray-100"><MarketplaceInfoForm /></div>)}</div>
+              <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap justify-center gap-4"><button onClick={handleAWSPrivateOffer} disabled={!isReceived} className={`px-8 py-2.5 border rounded shadow-sm text-sm font-bold flex items-center gap-2 transition-all ${!isReceived ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'bg-white hover:bg-gray-50 border-gray-300 text-gray-700 cursor-pointer shadow-md'}`}><Cloud className={`w-4 h-4 ${!isReceived ? 'text-gray-400' : 'text-blue-500'}`} /> Create AWS Private Offer</button><button onClick={handleCancel} className="px-8 py-2.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors">Cancel</button></div>
             </div>
           </div>
         </div>
@@ -1343,211 +918,57 @@ export default function App() {
     );
   }
 
-  // --- 6. PDF WORKFLOW (SCREENSHOT-BASED VIEWER) ---
+  // --- 6. PDF WORKFLOW ---
   if (view === 'pdf_workflow') {
     return (
-      <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-500 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-300 flex items-center justify-center">
         <div className="max-w-5xl w-full bg-white border border-gray-300 shadow-xl overflow-hidden flex flex-col h-[85vh]">
-          
-          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-            <h1 className="text-sm font-bold text-gray-800">Publish Quote : <span className="text-blue-600 font-normal hover:underline cursor-pointer">{quoteId}</span></h1>
-            <button onClick={() => setView('crm_quote')} className="text-blue-600 text-sm hover:underline">Back to Quote : {quoteId}</button>
-          </div>
-
-          <div className="px-6 py-4 bg-white flex flex-col space-y-3">
-             <h2 className="text-xs font-bold text-gray-600 uppercase tracking-widest">PDF Created</h2>
-             <div className="flex items-center gap-6 text-sm text-gray-800">
-                <label className="flex items-center gap-2 opacity-50 cursor-not-allowed"><div className="w-3.5 h-3.5 rounded-full border border-gray-400"></div> e-sign with Docusign</label>
-                <label className="flex items-center gap-2"><div className="w-3.5 h-3.5 rounded-full border-4 border-blue-600 flex items-center justify-center"></div> PDF Creation</label>
-             </div>
-             <p className="text-sm text-gray-700">The quote status has been updated and Quote Legal View has been generated below for print.</p>
-             <div className="pt-2">
-               <button 
-                  onClick={() => { 
-                    setQuoteStatus('Published'); 
-                    setView('crm_quote'); 
-                  }} 
-                  className="px-6 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50 bg-white shadow-sm font-medium text-gray-700 transition-colors"
-                >
-                  Close
-               </button>
-             </div>
-          </div>
-
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200"><h1 className="text-sm font-bold text-gray-800">Publish Quote : <span className="text-blue-600 font-normal hover:underline cursor-pointer">{quoteId}</span></h1><button onClick={() => setView('crm_quote')} className="text-blue-600 text-sm hover:underline">Back to Quote : {quoteId}</button></div>
+          <div className="px-6 py-4 bg-white flex flex-col space-y-3"><h2 className="text-xs font-bold text-gray-600 uppercase tracking-widest">PDF Created</h2><div className="flex items-center gap-6 text-sm text-gray-800"><label className="flex items-center gap-2 opacity-50 cursor-not-allowed"><div className="w-3.5 h-3.5 rounded-full border border-gray-400"></div> e-sign with Docusign</label><label className="flex items-center gap-2"><div className="w-3.5 h-3.5 rounded-full border-4 border-blue-600 flex items-center justify-center"></div> PDF Creation</label></div><p className="text-sm text-gray-700">The quote status has been updated and Quote Legal View has been generated below for print.</p><div className="pt-2"><button onClick={() => { setQuoteStatus('Published'); setView('crm_quote'); }} className="px-6 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50 bg-white shadow-sm font-medium text-gray-700 transition-colors">Close</button></div></div>
           <div className="flex-1 bg-[#323639] flex flex-col overflow-hidden mx-4 mb-4 border border-gray-700 rounded-sm">
-             <div className="bg-[#323639] text-white px-4 py-2 flex items-center justify-between border-b border-gray-700 text-sm select-none">
-                <div className="flex items-center gap-4"><Menu className="w-5 h-5 cursor-pointer hover:text-gray-300" /><span className="font-semibold text-xs tracking-wider">SfdcQuoteLegalViewPage</span></div>
-                <div className="flex items-center gap-4">
-                   <div className="flex items-center gap-2 bg-[#202124] px-3 py-1 rounded"><span className="font-medium">1</span> <span className="text-gray-400">/ 6</span></div>
-                   <div className="w-px h-5 bg-gray-600"></div>
-                   <div className="flex items-center gap-3"><Minus className="w-4 h-4 cursor-pointer hover:text-gray-300" /><span className="font-medium w-8 text-center">90%</span><Plus className="w-4 h-4 cursor-pointer hover:text-gray-300" /></div>
-                   <div className="w-px h-5 bg-gray-600"></div>
-                   <div className="flex items-center gap-3"><FileText className="w-4 h-4 cursor-pointer hover:text-gray-300" /><RotateCw className="w-4 h-4 cursor-pointer hover:text-gray-300" /></div>
-                </div>
-                <div className="flex items-center gap-4 text-gray-300"><Cloud className="w-5 h-5 cursor-pointer hover:text-white" /><Download className="w-5 h-5 cursor-pointer hover:text-white" /><Printer className="w-5 h-5 cursor-pointer hover:text-white" /><MoreVertical className="w-5 h-5 cursor-pointer hover:text-white" /></div>
-             </div>
-
-             <div className="flex flex-1 overflow-hidden relative">
-                <div className="w-56 bg-[#323639] border-r border-gray-700 overflow-y-auto p-4 space-y-6 hidden md:block">
-                    {[1,2,3].map(i => (
-                       <div key={i} className="flex flex-col items-center gap-2">
-                          <div className={`w-36 h-48 bg-white ${i===1 ? 'border-[3px] border-blue-400 shadow-[0_0_0_2px_rgba(96,165,250,0.5)]' : 'opacity-80 hover:opacity-100 cursor-pointer'} flex items-center justify-center p-2`}>
-                              <div className="w-full h-full border border-gray-100 opacity-20 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,#ccc_2px,#ccc_3px)]"></div>
-                          </div>
-                          <span className="text-xs text-white font-medium">{i}</span>
-                       </div>
-                    ))}
-                </div>
-                <div className="flex-1 overflow-y-auto p-8 flex justify-center bg-[#525659]">
-                    <div className="bg-white w-full max-w-2xl min-h-[850px] shadow-2xl p-12 text-gray-800 font-serif relative">
-                        <div className="flex justify-between items-start mb-12 border-b-2 border-gray-800 pb-8">
-                            <div className="flex items-center gap-2 text-[#00a1e0] font-bold text-3xl"><Cloud className="w-10 h-10 fill-current" /> salesforce</div>
-                            <div className="text-[10px] text-gray-600 leading-relaxed">Salesforce, Inc.<br/>Salesforce Tower<br/>415 Mission Street, 3rd Floor<br/>San Francisco, CA 94105<br/>United States</div>
-                            <div className="text-[10px] text-right text-gray-600 leading-relaxed">ORDER FORM for Drew AWS UAT 10.1<br/>Offer Valid Through: 2/28/2026<br/>Proposed by: Sally Sales<br/>Quote Number: {quoteId}</div>
-                        </div>
-                        <h2 className="text-xl tracking-widest mb-8 font-bold">ORDER FORM</h2>
-                        <h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold">Address Information</h3>
-                        <div className="flex justify-between text-[11px] mb-10 leading-relaxed">
-                            <div><p className="font-bold mb-1">Bill To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Company Name: Drew AWS UAT 10.1</p><p>Billing Contact Name: Drew Mitchell</p><p>Billing Email Address: drew.mitchell@sales.com</p></div>
-                            <div><p className="font-bold mb-1">Ship To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Phone: (765) 432-9627</p><p>Billing Fax:</p><p>Billing Language: English</p></div>
-                        </div>
-                        <h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold mt-12">Terms and Conditions</h3>
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-[11px]">
-                            <div>Contract Start Date*: 3/2/2026</div><div>Payment Method: Wire Transfer</div><div>Contract End Date*: 3/1/2028</div><div>Billing Method: </div><div>Billing Frequency: Quarterly</div>
-                        </div>
-                    </div>
-                </div>
-             </div>
+             <div className="bg-[#323639] text-white px-4 py-2 flex items-center justify-between border-b border-gray-700 text-sm select-none"><div className="flex items-center gap-4"><Menu className="w-5 h-5 cursor-pointer hover:text-gray-300" /><span className="font-semibold text-xs tracking-wider">SfdcQuoteLegalViewPage</span></div><div className="flex items-center gap-4"><div className="flex items-center gap-2 bg-[#202124] px-3 py-1 rounded"><span className="font-medium">1</span> <span className="text-gray-400">/ 6</span></div><div className="w-px h-5 bg-gray-600"></div><div className="flex items-center gap-3"><Minus className="w-4 h-4 cursor-pointer hover:text-gray-300" /><span className="font-medium w-8 text-center">90%</span><Plus className="w-4 h-4 cursor-pointer hover:text-gray-300" /></div><div className="w-px h-5 bg-gray-600"></div><div className="flex items-center gap-3"><FileText className="w-4 h-4 cursor-pointer hover:text-gray-300" /><RotateCw className="w-4 h-4 cursor-pointer hover:text-gray-300" /></div></div><div className="flex items-center gap-4 text-gray-300"><Cloud className="w-5 h-5 cursor-pointer hover:text-white" /><Download className="w-5 h-5 cursor-pointer hover:text-white" /><Printer className="w-5 h-5 cursor-pointer hover:text-white" /><MoreVertical className="w-5 h-5 cursor-pointer hover:text-white" /></div></div>
+             <div className="flex flex-1 overflow-hidden relative"><div className="w-56 bg-[#323639] border-r border-gray-700 overflow-y-auto p-4 space-y-6 hidden md:block">{[1,2,3].map(i => (<div key={i} className="flex flex-col items-center gap-2"><div className={`w-36 h-48 bg-white ${i===1 ? 'border-[3px] border-blue-400 shadow-[0_0_0_2px_rgba(96,165,250,0.5)]' : 'opacity-80 hover:opacity-100 cursor-pointer'} flex items-center justify-center p-2`}><div className="w-full h-full border border-gray-100 opacity-20 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,#ccc_2px,#ccc_3px)]"></div></div><span className="text-xs text-white font-medium">{i}</span></div>))}</div><div className="flex-1 overflow-y-auto p-8 flex justify-center bg-[#525659]"><div className="bg-white w-full max-w-2xl min-h-[850px] shadow-2xl p-12 text-gray-800 font-serif relative"><div className="flex justify-between items-start mb-12 border-b-2 border-gray-800 pb-8"><div className="flex items-center gap-2 text-[#00a1e0] font-bold text-3xl"><Cloud className="w-10 h-10 fill-current" /> salesforce</div><div className="text-[10px] text-gray-600 leading-relaxed">Salesforce, Inc.<br/>Salesforce Tower<br/>415 Mission Street, 3rd Floor<br/>San Francisco, CA 94105<br/>United States</div><div className="text-[10px] text-right text-gray-600 leading-relaxed">ORDER FORM for Drew AWS UAT 10.1<br/>Offer Valid Through: 2/28/2026<br/>Proposed by: Sally Sales<br/>Quote Number: {quoteId}</div></div><h2 className="text-xl tracking-widest mb-8 font-bold">ORDER FORM</h2><h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold">Address Information</h3><div className="flex justify-between text-[11px] mb-10 leading-relaxed"><div><p className="font-bold mb-1">Bill To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Company Name: Drew AWS UAT 10.1</p><p>Billing Contact Name: Drew Mitchell</p><p>Billing Email Address: drew.mitchell@sales.com</p></div><div><p className="font-bold mb-1">Ship To:</p><p>307 W 5th St<br/>Austin<br/>TX, 78701<br/>US - United States</p><br/><p>Billing Phone: (765) 432-9627</p><p>Billing Fax:</p><p>Billing Language: English</p></div></div><h3 className="text-lg border-b border-gray-300 pb-2 mb-4 font-semibold mt-12">Terms and Conditions</h3><div className="grid grid-cols-2 gap-x-8 gap-y-4 text-[11px]"><div>Contract Start Date*: {startDate}</div><div>Payment Method: Wire Transfer</div><div>Contract End Date*: 3/1/2028</div><div>Billing Method: </div><div>Billing Frequency: Quarterly</div></div></div></div></div>
           </div>
         </div>
       </div>
     );
   }
 
-  // --- 7. PUBLICATION SETTINGS (FALLBACK) ---
+  // --- 7. PUBLICATION SETTINGS ---
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-500">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans text-gray-800 animate-in fade-in duration-300">
       <div className="max-w-4xl mx-auto bg-white border border-gray-300 rounded-sm shadow-sm overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
-          <h1 className="text-blue-700 font-normal">Publish Quote : <span className="hover:underline cursor-pointer">{quoteId}</span></h1>
-          <div className="flex items-center gap-4"><span className="flex items-center gap-1 text-[10px] text-green-600 font-bold uppercase bg-green-50 px-2 py-0.5 rounded border border-green-200"><ShieldCheck className="w-3 h-3" /> Validated</span>
-            <button onClick={handleCancel} className="text-blue-600 hover:underline text-sm transition-colors">Back to Quote</button>
-          </div>
-        </div>
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50"><h1 className="text-blue-700 font-normal">Publish Quote : <span className="hover:underline cursor-pointer">{quoteId}</span></h1><div className="flex items-center gap-4"><span className="flex items-center gap-1 text-[10px] text-green-600 font-bold uppercase bg-green-50 px-2 py-0.5 rounded border border-green-200"><ShieldCheck className="w-3 h-3" /> Validated</span><button onClick={handleCancel} className="text-blue-600 hover:underline text-sm transition-colors">Back to Quote</button></div></div>
         <div className="p-6 space-y-8">
           <section>
             <h3 className="uppercase text-xs font-semibold tracking-wider text-gray-500 mb-4">Choose a delivery method for this quote:</h3>
             <div className="flex flex-col sm:flex-row flex-wrap gap-6 mb-4">
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input type="radio" checked={deliveryMethod === 'none'} onChange={() => setDeliveryMethod('none')} className="w-4 h-4 text-blue-600 border-gray-300" />
-                <span className="group-hover:text-blue-600">Signature not required</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input type="radio" checked={deliveryMethod === 'docusign'} onChange={() => setDeliveryMethod('docusign')} className="w-4 h-4 text-blue-600 border-gray-300" />
-                <span className="group-hover:text-blue-600">e-sign with Docusign</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input type="radio" checked={deliveryMethod === 'pdf'} onChange={() => setDeliveryMethod('pdf')} className="w-4 h-4 text-blue-600 border-gray-300" />
-                <span className="group-hover:text-blue-600">PDF Creation</span>
-              </label>
+              <label className="flex items-center gap-2 cursor-pointer group"><input type="radio" checked={deliveryMethod === 'none'} onChange={() => setDeliveryMethod('none')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="group-hover:text-blue-600">Signature not required</span></label>
+              <label className="flex items-center gap-2 cursor-pointer group"><input type="radio" checked={deliveryMethod === 'docusign'} onChange={() => setDeliveryMethod('docusign')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="group-hover:text-blue-600">e-sign with Docusign</span></label>
+              <label className="flex items-center gap-2 cursor-pointer group"><input type="radio" checked={deliveryMethod === 'pdf'} onChange={() => setDeliveryMethod('pdf')} className="w-4 h-4 text-blue-600 border-gray-300" /><span className="group-hover:text-blue-600">PDF Creation</span></label>
             </div>
-            
             {deliveryMethod !== 'docusign' && <p className="text-sm text-gray-700 italic border-l-2 border-gray-200 pl-4 py-1">{getMethodDescription()}</p>}
           </section>
-          
           <div className="min-h-[140px]">
-            {deliveryMethod === 'pdf' && (
-              <section className="animate-in fade-in slide-in-from-top-1 space-y-6">
-                <div className="flex flex-col md:flex-row md:items-start gap-4">
-                  <h3 className="text-sm text-gray-600 md:w-1/3 font-medium">Number of signature blocks to generate:</h3>
-                  <div className="flex flex-col gap-3">
-                    {[1, 2, 3, 4, 5].map((num) => (
-                      <label key={num} className="flex items-center gap-3 cursor-pointer group"><input type="radio" checked={signatureBlocks === num} onChange={() => setSignatureBlocks(num)} className="w-4 h-4 text-blue-600" /><span className="text-sm group-hover:text-blue-600">{num}</span></label>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            )}
-            
-            {deliveryMethod === 'none' && (
-              <section className="animate-in fade-in slide-in-from-top-1"><MarketplaceInfoForm /></section>
-            )}
-            
+            {deliveryMethod === 'pdf' && (<section className="animate-in fade-in slide-in-from-top-1 space-y-6"><div className="flex flex-col md:flex-row md:items-start gap-4"><h3 className="text-sm text-gray-600 md:w-1/3 font-medium">Number of signature blocks to generate:</h3><div className="flex flex-col gap-3">{[1, 2, 3, 4, 5].map((num) => (<label key={num} className="flex items-center gap-3 cursor-pointer group"><input type="radio" checked={signatureBlocks === num} onChange={() => setSignatureBlocks(num)} className="w-4 h-4 text-blue-600" /><span className="text-sm group-hover:text-blue-600">{num}</span></label>))}</div></div></section>)}
+            {deliveryMethod === 'none' && (<section className="animate-in fade-in slide-in-from-top-1"><MarketplaceInfoForm /></section>)}
             {deliveryMethod === 'docusign' && (
               <section className="animate-in fade-in slide-in-from-top-1 space-y-8">
                  <p className="text-[13px] text-gray-700 leading-relaxed max-w-4xl">Publishes the quote via Docusign for e-signature, or customer can print directly from Docusign if they require ink signature. You can choose to email a Docusign envelope to up to 5 contacts for signature (choose Add Signer for additional contacts), or you can have a single contact sign in person on your own device (check the "In person signing" field). Customer will still be required to accept a Private Offer in the Marketplace after signing.</p>
-                 <div>
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Select Recipient(s)</h4>
-                    <div className="max-w-2xl space-y-4">
-                       <div className="flex items-center">
-                          <label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> From</label>
-                          <div className="w-3/4 relative">
-                            <Search className="absolute left-2.5 top-2 w-4 h-4 text-gray-400" />
-                            <input type="text" value={docusignForm.from} onChange={(e) => setDocusignForm({...docusignForm, from: e.target.value})} className="w-full pl-9 pr-8 py-1.5 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" />
-                            <div className="absolute right-2.5 top-2.5 bg-gray-300 rounded-full p-0.5 cursor-pointer hover:bg-gray-400"><X className="w-3 h-3 text-white" /></div>
-                          </div>
-                       </div>
-                       <div className="flex items-center">
-                          <label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> Signer1</label>
-                          <div className="w-3/4 relative">
-                            <Search className="absolute left-2.5 top-2 w-4 h-4 text-gray-400" />
-                            <input type="text" value={docusignForm.signer1} onChange={(e) => setDocusignForm({...docusignForm, signer1: e.target.value})} className="w-full pl-9 pr-8 py-1.5 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" />
-                            <div className="absolute right-2.5 top-2.5 bg-gray-300 rounded-full p-0.5 cursor-pointer hover:bg-gray-400"><X className="w-3 h-3 text-white" /></div>
-                          </div>
-                       </div>
-                       <div className="flex items-center">
-                          <div className="w-1/4"></div>
-                          <div className="w-3/4 flex gap-4 text-[13px] text-[#006dcc] font-medium"><button className="hover:underline">Add Signer</button><button className="text-gray-600 hover:underline">Remove Signer</button></div>
-                       </div>
-                       <div className="flex items-start mt-2">
-                         <label className="w-1/4 text-[13px] text-gray-700 mt-2 font-medium">CC:</label>
-                         <div className="w-3/4">
-                            <textarea rows="2" placeholder="Provide email addresses separated by comma" value={docusignForm.cc} onChange={(e) => setDocusignForm({...docusignForm, cc: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500 resize-none"></textarea>
-                            <label className="flex items-center gap-2 mt-3 cursor-pointer">
-                              <input type="checkbox" checked={docusignForm.inPerson} onChange={(e) => setDocusignForm({...docusignForm, inPerson: e.target.checked})} className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" />
-                              <span className="text-[13px] text-gray-700">In person signing?</span>
-                            </label>
+                 <div><h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Select Recipient(s)</h4><div className="max-w-2xl space-y-4"><div className="flex items-center"><label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> From</label><div className="w-3/4 relative"><Search className="absolute left-2.5 top-2 w-4 h-4 text-gray-400" /><input type="text" value={docusignForm.from} onChange={(e) => setDocusignForm({...docusignForm, from: e.target.value})} className="w-full pl-9 pr-8 py-1.5 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" /><div className="absolute right-2.5 top-2.5 bg-gray-300 rounded-full p-0.5 cursor-pointer hover:bg-gray-400"><X className="w-3 h-3 text-white" /></div></div></div><div className="flex items-center"><label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> Signer1</label><div className="w-3/4 relative"><Search className="absolute left-2.5 top-2 w-4 h-4 text-gray-400" /><input type="text" value={docusignForm.signer1} onChange={(e) => setDocusignForm({...docusignForm, signer1: e.target.value})} className="w-full pl-9 pr-8 py-1.5 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" /><div className="absolute right-2.5 top-2.5 bg-gray-300 rounded-full p-0.5 cursor-pointer hover:bg-gray-400"><X className="w-3 h-3 text-white" /></div></div></div><div className="flex items-center"><div className="w-1/4"></div><div className="w-3/4 flex gap-4 text-[13px] text-[#006dcc] font-medium"><button className="hover:underline">Add Signer</button><button className="text-gray-600 hover:underline">Remove Signer</button></div></div><div className="flex items-start mt-2"><label className="w-1/4 text-[13px] text-gray-700 mt-2 font-medium">CC:</label><div className="w-3/4"><textarea rows="2" placeholder="Provide email addresses separated by comma" value={docusignForm.cc} onChange={(e) => setDocusignForm({...docusignForm, cc: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500 resize-none"></textarea><label className="flex items-center gap-2 mt-3 cursor-pointer"><input type="checkbox" checked={docusignForm.inPerson} onChange={(e) => setDocusignForm({...docusignForm, inPerson: e.target.checked})} className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300" /><span className="text-[13px] text-gray-700">In person signing?</span></label></div></div>
+                       
+                       {!['Add On Quote', 'Swap Quote', 'Transfer Quote'].includes(quoteType) && (
+                         <div className="flex items-center mt-4 animate-in fade-in">
+                           <label className="w-1/4 text-[13px] text-gray-700 font-medium">Docusign Expiration Date:</label>
+                           <div className="w-3/4"><input type="date" value={dsExpFormatted} disabled className="w-full p-2 border border-gray-200 rounded text-[13px] bg-gray-50 text-gray-500 cursor-not-allowed focus:outline-none" /></div>
                          </div>
-                       </div>
-                       <div className="flex items-center mt-4">
-                         <label className="w-1/4 text-[13px] text-gray-700 font-medium">Docusign Expiration Date:</label>
-                         <div className="w-3/4">
-                            <input type="date" value={dsExpFormatted} disabled className="w-full p-2 border border-gray-200 rounded text-[13px] bg-gray-50 text-gray-500 cursor-not-allowed focus:outline-none" />
-                         </div>
-                       </div>
-                    </div>
-                 </div>
-                 <div className="pt-6 border-t border-gray-200">
-                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Review Email</h4>
-                   <div className="max-w-2xl space-y-4">
-                     <div className="flex items-center">
-                        <label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> Subject:</label>
-                        <div className="w-3/4"><input type="text" value={docusignForm.subject} onChange={(e) => setDocusignForm({...docusignForm, subject: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" /></div>
-                     </div>
-                     <div className="flex items-start">
-                        <label className="w-1/4 text-[13px] text-gray-700 font-medium mt-2"><span className="text-[#d13212] font-bold mr-1">*</span> Message:</label>
-                        <div className="w-3/4">
-                          <textarea rows="7" value={docusignForm.message} onChange={(e) => setDocusignForm({...docusignForm, message: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500 resize-none leading-relaxed"></textarea>
-                          <div className="flex gap-2 mt-4">
-                             <button onClick={() => { setQuoteStatus('Published'); setView('crm_quote'); }} className="px-4 py-1.5 bg-white border border-[#006dcc] text-[#006dcc] rounded text-[13px] font-medium hover:bg-blue-50 transition-colors">Send</button>
-                             <button onClick={handleCancel} className="px-4 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-[13px] font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-                          </div>
-                        </div>
-                     </div>
-                   </div>
-                 </div>
+                       )}
+                    </div></div>
+                 <div className="pt-6 border-t border-gray-200"><h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Review Email</h4><div className="max-w-2xl space-y-4"><div className="flex items-center"><label className="w-1/4 text-[13px] text-gray-700 font-medium"><span className="text-[#d13212] font-bold mr-1">*</span> Subject:</label><div className="w-3/4"><input type="text" value={docusignForm.subject} onChange={(e) => setDocusignForm({...docusignForm, subject: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500" /></div></div><div className="flex items-start"><label className="w-1/4 text-[13px] text-gray-700 font-medium mt-2"><span className="text-[#d13212] font-bold mr-1">*</span> Message:</label><div className="w-3/4"><textarea rows="7" value={docusignForm.message} onChange={(e) => setDocusignForm({...docusignForm, message: e.target.value})} className="w-full p-2 border border-gray-300 rounded text-[13px] focus:outline-none focus:border-blue-500 resize-none leading-relaxed"></textarea><div className="flex gap-2 mt-4"><button onClick={() => { setQuoteStatus('Published'); setView('crm_quote'); }} className="px-4 py-1.5 bg-white border border-[#006dcc] text-[#006dcc] rounded text-[13px] font-medium hover:bg-blue-50 transition-colors">Send</button><button onClick={handleCancel} className="px-4 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-[13px] font-medium hover:bg-gray-50 transition-colors">Cancel</button></div></div></div></div></div>
               </section>
             )}
           </div>
-          
-          {deliveryMethod !== 'docusign' && (
-            <div className="flex flex-wrap justify-start gap-3 pt-6 border-t border-gray-100">
-              {deliveryMethod === 'none' && (<button onClick={handleAWSPrivateOffer} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold flex items-center gap-2 transition-all shadow-md active:shadow-inner"><Cloud className="w-4 h-4 text-blue-500" />Create AWS Private Offer</button>)}
-              {deliveryMethod === 'pdf' && (<button onClick={handleNext} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium min-w-[100px] transition-all">Next</button>)}
-              <button onClick={handleCancel} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium min-w-[100px] transition-all">Cancel</button>
-            </div>
-          )}
-          
+          {deliveryMethod !== 'docusign' && (<div className="flex flex-wrap justify-start gap-3 pt-6 border-t border-gray-100">{deliveryMethod === 'none' && (<button onClick={handleAWSPrivateOffer} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold flex items-center gap-2 transition-all shadow-md active:shadow-inner"><Cloud className="w-4 h-4 text-blue-500" />Create AWS Private Offer</button>)}{deliveryMethod === 'pdf' && (<button onClick={handleNext} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium min-w-[100px] transition-all">Next</button>)}<button onClick={handleCancel} className="px-8 py-1.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium min-w-[100px] transition-all">Cancel</button></div>)}
           {statusMessage && (<div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded shadow-xl text-sm z-50 transition-all border border-gray-700 animate-in slide-in-from-bottom-2">{statusMessage}</div>)}
         </div>
       </div>
