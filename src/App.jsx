@@ -463,6 +463,47 @@ I confirm I have read the ${vendor} FAQ and will adhere to all Program restricti
   );
 };
 
+const MarketplaceInfoForm = ({ quoteType, awsAccountNumber, setAwsAccountNumber, buyers, setBuyers }) => {
+  const isAccountEditable = ['New Business Quote', 'Upgrade Quote', 'Renewal Quote'].includes(quoteType);
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
+      <div className="flex items-center gap-2 mb-6">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">AWS Marketplace Information</h3>
+        <div className="h-px flex-1 bg-gray-200"></div>
+      </div>
+      <div className="max-w-xs">
+        <label className="text-xs font-bold text-gray-500 uppercase block mb-1.5 tracking-wider">AWS Account Number</label>
+        <div className="relative">
+          <Hash className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isAccountEditable ? 'text-gray-400' : 'text-gray-300'}`} />
+          <input 
+            type="text" 
+            value={awsAccountNumber} 
+            onChange={(e) => setAwsAccountNumber(e.target.value)} 
+            disabled={!isAccountEditable}
+            className={`w-full pl-10 pr-3 py-2 border rounded text-sm transition-all outline-none ${
+              isAccountEditable 
+                ? "bg-white border-gray-300 focus:bg-white focus:ring-2 focus:ring-blue-500" 
+                : "bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200 shadow-inner"
+            }`} 
+          />
+        </div>
+        {!isAccountEditable && <p className="text-[10px] text-gray-400 mt-1 italic font-medium">AWS Account Number cannot be changed on an existing AWS Marketplace Contract.</p>}
+      </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between"><label className="text-xs font-bold text-gray-500 uppercase block tracking-wider">Buyer Information</label><button onClick={() => setBuyers([...buyers, {id: Date.now(), name: '', email: ''}])} className="text-xs flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-semibold"><Plus className="w-3 h-3" /> Add Buyer</button></div>
+        <div className="space-y-3">{buyers.map((b) => (
+            <div key={b.id} className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 border rounded-md relative group transition-all hover:border-gray-300">
+              <div className="flex-1 relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" value={b.name} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, name: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Name" /></div>
+              <div className="flex-1 relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="email" value={b.email} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, email: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Email" /></div>
+              {buyers.length > 1 && (<button onClick={() => setBuyers(buyers.filter(bu => bu.id !== b.id))} className="absolute -right-2 -top-2 bg-white border border-gray-200 shadow-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-600 hover:border-red-200"><X className="w-3 h-3" /></button>)}
+            </div>
+          ))}</div>
+      </div>
+    </div>
+  );
+};
+
 
 /**
  * MAIN APP ENTRY POINT
@@ -710,47 +751,6 @@ export default function App() {
     }, 1500);
   };
 
-  const MarketplaceInfoForm = () => {
-    const isAccountEditable = ['New Business Quote', 'Upgrade Quote', 'Renewal Quote'].includes(quoteType);
-
-    return (
-      <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-500">
-        <div className="flex items-center gap-2 mb-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">AWS Marketplace Information</h3>
-          <div className="h-px flex-1 bg-gray-200"></div>
-        </div>
-        <div className="max-w-xs">
-          <label className="text-xs font-bold text-gray-500 uppercase block mb-1.5 tracking-wider">AWS Account Number</label>
-          <div className="relative">
-            <Hash className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isAccountEditable ? 'text-gray-400' : 'text-gray-300'}`} />
-            <input 
-              type="text" 
-              value={awsAccountNumber} 
-              onChange={(e) => setAwsAccountNumber(e.target.value)} 
-              disabled={!isAccountEditable}
-              className={`w-full pl-10 pr-3 py-2 border rounded text-sm transition-all outline-none ${
-                isAccountEditable 
-                  ? "bg-white border-gray-300 focus:bg-white focus:ring-2 focus:ring-blue-500" 
-                  : "bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200 shadow-inner"
-              }`} 
-            />
-          </div>
-          {!isAccountEditable && <p className="text-[10px] text-gray-400 mt-1 italic font-medium">AWS Account Number cannot be changed on an existing AWS Marketplace Contract.</p>}
-        </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between"><label className="text-xs font-bold text-gray-500 uppercase block tracking-wider">Buyer Information</label><button onClick={() => setBuyers([...buyers, {id: Date.now(), name: '', email: ''}])} className="text-xs flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors font-semibold"><Plus className="w-3 h-3" /> Add Buyer</button></div>
-          <div className="space-y-3">{buyers.map((b) => (
-              <div key={b.id} className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 border rounded-md relative group transition-all hover:border-gray-300">
-                <div className="flex-1 relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="text" value={b.name} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, name: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Name" /></div>
-                <div className="flex-1 relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><input type="email" value={b.email} onChange={(e) => setBuyers(buyers.map(bu => bu.id === b.id ? {...bu, email: e.target.value} : bu))} className="w-full pl-10 pr-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Email" /></div>
-                {buyers.length > 1 && (<button onClick={() => setBuyers(buyers.filter(bu => bu.id !== b.id))} className="absolute -right-2 -top-2 bg-white border border-gray-200 shadow-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-600 hover:border-red-200"><X className="w-3 h-3" /></button>)}
-              </div>
-            ))}</div>
-        </div>
-      </div>
-    );
-  };
-
   // --- 0. CASE INTAKE FLOW ---
   if (view === 'case_intake') {
     return <CaseIntakeFlow onBack={() => setView('validation')} initialQuoteId={quoteId} />;
@@ -832,7 +832,7 @@ export default function App() {
                 <div className="mt-10 pt-8 border-t border-gray-200 animate-in fade-in">
                   {uploadedFile && (<div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto"><div className="flex items-center gap-3"><div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div><div><span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">{uploadedFile.name}</span><span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span></div></div><button onClick={() => setUploadedFile(null)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button></div>)}
                   {isDocusignValidated && (<div className="p-4 rounded-md border border-green-200 bg-green-50 flex items-center justify-between mb-8 max-w-2xl mx-auto"><div className="flex items-center gap-3"><div className="p-2 bg-white rounded-full text-green-600 shadow-sm"><CheckCircle2 className="w-5 h-5" /></div><div><span className="text-sm font-semibold text-gray-800 block truncate max-w-[250px]">DocuSign Envelope Validated</span><span className="text-[10px] text-green-700 font-bold flex items-center gap-1 uppercase tracking-wider"><CheckCircle2 className="w-3 h-3" /> Ready for Marketplace</span></div></div><button onClick={() => setIsDocusignValidated(false)} className="p-2 hover:bg-green-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button></div>)}
-                  <MarketplaceInfoForm /><div className="mt-8 pt-6 border-t border-gray-100 flex justify-center"><button onClick={handleAWSPrivateOffer} className="px-8 py-2.5 bg-blue-600 text-white rounded shadow-md text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all"><Cloud className="w-4 h-4" /> Create AWS Private Offer</button></div>
+                  <MarketplaceInfoForm quoteType={quoteType} awsAccountNumber={awsAccountNumber} setAwsAccountNumber={setAwsAccountNumber} buyers={buyers} setBuyers={setBuyers} /><div className="mt-8 pt-6 border-t border-gray-100 flex justify-center"><button onClick={handleAWSPrivateOffer} className="px-8 py-2.5 bg-blue-600 text-white rounded shadow-md text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all"><Cloud className="w-4 h-4" /> Create AWS Private Offer</button></div>
                 </div>
              )}
            </div>
@@ -909,7 +909,7 @@ export default function App() {
           <div className="p-8">
             <div className="max-w-2xl mx-auto">
               <div className={`flex items-center gap-6 mb-8 p-6 border rounded-lg transition-all duration-500 ${isReceived ? 'bg-green-50 border-green-100' : 'bg-blue-50 border-blue-100'}`}><div className={`p-4 bg-white rounded-full shadow-sm transition-colors ${isReceived ? 'text-green-600' : 'text-blue-600 animate-pulse'}`}>{isReceived ? <CheckCircle2 className="w-8 h-8" /> : <Send className="w-8 h-8" />}</div><div><h2 className={`text-lg font-bold ${isReceived ? 'text-green-900' : 'text-blue-900'}`}>DocuSign Status: {isReceived ? 'Signed Envelope Received' : 'Sent for Signature'}</h2><p className={`text-sm mt-1 flex items-center gap-1.5 ${isReceived ? 'text-green-700' : 'text-blue-700'}`}><Clock className="w-4 h-4" /> {isReceived ? 'Received' : 'Sent'} on {todayFormatted}</p></div></div>
-              <div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Email</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">drew.mitchell@sales.com</p></div><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Workflow Step</p><p className={`text-sm font-bold p-2 border rounded transition-colors ${isReceived ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200'}`}>{isReceived ? 'External Signature Received' : 'Awaiting External Signature'}</p></div></div>{!isReceived ? (<div className="bg-amber-50 border border-amber-200 p-4 rounded-md animate-in fade-in duration-300"><div className="flex gap-3"><AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" /><p className="text-xs text-amber-800 leading-relaxed">The Create AWS Private Offer workflow is locked until the Order Form has been fully executed via DocuSign.</p></div></div>) : (<div className="mt-8 pt-8 border-t border-gray-100"><MarketplaceInfoForm /></div>)}</div>
+              <div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Recipient Email</p><p className="text-sm font-medium p-2 bg-gray-50 border border-gray-200 rounded">drew.mitchell@sales.com</p></div><div className="space-y-1.5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Workflow Step</p><p className={`text-sm font-bold p-2 border rounded transition-colors ${isReceived ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200'}`}>{isReceived ? 'External Signature Received' : 'Awaiting External Signature'}</p></div></div>{!isReceived ? (<div className="bg-amber-50 border border-amber-200 p-4 rounded-md animate-in fade-in duration-300"><div className="flex gap-3"><AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" /><p className="text-xs text-amber-800 leading-relaxed">The Create AWS Private Offer workflow is locked until the Order Form has been fully executed via DocuSign.</p></div></div>) : (<div className="mt-8 pt-8 border-t border-gray-100"><MarketplaceInfoForm quoteType={quoteType} awsAccountNumber={awsAccountNumber} setAwsAccountNumber={setAwsAccountNumber} buyers={buyers} setBuyers={setBuyers} /></div>)}</div>
               <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap justify-center gap-4"><button onClick={handleAWSPrivateOffer} disabled={!isReceived} className={`px-8 py-2.5 border rounded shadow-sm text-sm font-bold flex items-center gap-2 transition-all ${!isReceived ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60' : 'bg-white hover:bg-gray-50 border-gray-300 text-gray-700 cursor-pointer shadow-md'}`}><Cloud className={`w-4 h-4 ${!isReceived ? 'text-gray-400' : 'text-blue-500'}`} /> Create AWS Private Offer</button><button onClick={handleCancel} className="px-8 py-2.5 border border-gray-300 rounded shadow-sm bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors">Cancel</button></div>
             </div>
           </div>
@@ -951,7 +951,7 @@ export default function App() {
           </section>
           <div className="min-h-[140px]">
             {deliveryMethod === 'pdf' && (<section className="animate-in fade-in slide-in-from-top-1 space-y-6"><div className="flex flex-col md:flex-row md:items-start gap-4"><h3 className="text-sm text-gray-600 md:w-1/3 font-medium">Number of signature blocks to generate:</h3><div className="flex flex-col gap-3">{[1, 2, 3, 4, 5].map((num) => (<label key={num} className="flex items-center gap-3 cursor-pointer group"><input type="radio" checked={signatureBlocks === num} onChange={() => setSignatureBlocks(num)} className="w-4 h-4 text-blue-600" /><span className="text-sm group-hover:text-blue-600">{num}</span></label>))}</div></div></section>)}
-            {deliveryMethod === 'none' && (<section className="animate-in fade-in slide-in-from-top-1"><MarketplaceInfoForm /></section>)}
+            {deliveryMethod === 'none' && (<section className="animate-in fade-in slide-in-from-top-1"><MarketplaceInfoForm quoteType={quoteType} awsAccountNumber={awsAccountNumber} setAwsAccountNumber={setAwsAccountNumber} buyers={buyers} setBuyers={setBuyers} /></section>)}
             {deliveryMethod === 'docusign' && (
               <section className="animate-in fade-in slide-in-from-top-1 space-y-8">
                  <p className="text-[13px] text-gray-700 leading-relaxed max-w-4xl">Publishes the quote via Docusign for e-signature, or customer can print directly from Docusign if they require ink signature. You can choose to email a Docusign envelope to up to 5 contacts for signature (choose Add Signer for additional contacts), or you can have a single contact sign in person on your own device (check the "In person signing" field). Customer will still be required to accept a Private Offer in the Marketplace after signing.</p>
